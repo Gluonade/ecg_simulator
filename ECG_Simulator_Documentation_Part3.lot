@@ -1,0 +1,6 @@
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {3.1}{\ignorespaces FHN model constants for Phase 3-D (final calibration).}}{15}{table.caption.39}%
+\contentsline {table}{\numberline {3.2}{\ignorespaces ECG node Gaussian parameters. LV depol\_duration widened to 40 ms so adjacent nodes produce overlapping Gaussians → smooth QRS morphology.}}{16}{table.caption.40}%
+\contentsline {table}{\numberline {3.3}{\ignorespaces Phase 3-D validated timing intervals compared to clinical targets (normal sinus rhythm at 70 bpm).}}{18}{table.caption.41}%

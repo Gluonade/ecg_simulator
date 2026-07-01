@@ -1,0 +1,7 @@
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {2.1}{\ignorespaces Class hierarchy and composition relationships. Abstract \texttt {SimulationEngine} is implemented by two concrete engines. \texttt {ConductionCableEngine} owns a \texttt {ConductionCable1D} and uses \texttt {LeadFieldModel}. GUI components interface with a worker thread.}}{12}{figure.caption.35}%
+\contentsline {figure}{\numberline {2.2}{\ignorespaces Main simulation loop call graph for Phase 3 engine. Each frame ($\sim $2 ms), \texttt {step} is called, which advances the cable via 20 micro-steps and computes the ECG dipole.}}{12}{figure.caption.36}%
+\contentsline {figure}{\numberline {2.3}{\ignorespaces Data flow when user adjusts a parameter. The change propagates through the parameter model to the engine, which reinitializes and begins generating new ECG samples reflected in the display.}}{12}{figure.caption.37}%
+\contentsline {figure}{\numberline {2.4}{\ignorespaces Beat state machine for \texttt {ConductionCableEngine}. A beat transitions from ``No Beat'' to ``In Progress'' when the SA node fires, then to ``Committed'' when all ventricular nodes have activated or a timeout is reached.}}{13}{figure.caption.38}%
+\addvspace {10\p@ }

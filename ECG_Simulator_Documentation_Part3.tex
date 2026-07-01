@@ -1,0 +1,784 @@
+\documentclass[12pt,a4paper,oneside]{book}
+
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=2.5cm]{geometry}
+\setlength{\headheight}{15pt}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{fancyvrb}
+\usepackage{setspace}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{longtable}
+
+
+% Python code highlighting
+    language=Python,
+    escapechar=\,
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray},
+    stringstyle=\color{red},
+    showstringspaces=false,
+    frame=single,
+    rulecolor=\color{black!30}
+}
+
+% Document metadata
+\title{\Large \textbf{ECG Simulator}\\
+        \large Comprehensive Technical Documentation\\
+        \normalsize Pathologies, Diagrams, and Technical Reference}
+\author{Enrico Caruso\\Engineering \& Simulation}
+\date{\today}
+
+% Header and footer
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small ECG Simulator Documentation}
+\fancyhead[R]{\small Part 3 of 3}
+\fancyfoot[C]{\thepage}
+
+% Custom commands
+\newcommand{\class}[1]{\texttt{#1}}
+\newcommand{\func}[1]{\texttt{#1}()}
+\newcommand{\param}[1]{\textit{#1}}
+
+\onehalfspacing
+
+\begin{document}
+
+\frontmatter
+
+\tableofcontents
+\listoffigures
+\listoftables
+
+\mainmatter
+
+% ================================================================
+\chapter{Pathological ECG Patterns: Clinical Descriptions and Reproduction}
+% ================================================================
+
+This chapter describes every pathological ECG pattern producible by the simulator, with clinical meaning and step-by-step reproduction instructions for each.
+
+\section{AV Conduction Abnormalities}
+
+\subsection{First-Degree AV Block}
+
+\subsubsection{Clinical Description}
+
+First-degree AV block is a \textbf{conduction delay} through the AV node, resulting in prolonged \PR interval (> 200 ms), but with maintained 1:1 atrial-to-ventricular conduction. All P waves are followed by QRS complexes; no beats are dropped.
+
+\subsubsection{ECG Characteristics}
+
+\begin{itemize}
+    \item \textbf{PR interval}: Prolonged (typically 200–300 ms; normal is 120–200 ms)
+    \item \textbf{QRS duration}: Normal (< 120 ms)
+    \item \textbf{QRS morphology}: Normal (unless concurrent bundle branch block)
+    \item \textbf{Heart rhythm}: Regular
+    \item \textbf{P wave}: Normal morphology, slightly earlier than normal
+\end{itemize}
+
+\subsubsection{Simulator Parameters: Reproduction}
+
+\begin{enumerate}
+    \item \textbf{Engine}: Use Phase 1/2 (faster, more stable pathology models)
+    \item \textbf{Pathology Panel}: Check ``First-Degree AV Block''
+    \item \textbf{Parameter Adjustment} (manual, if needed):
+    \begin{itemize}
+        \item Navigate to \textbf{Parameters} panel $\to$ \textbf{AV Node} section
+        \item \textbf{AV Delay}: Increase from default 100 ms to 150–200 ms
+        \item Observe PR interval lengthening in real-time
+    \end{itemize}
+    \item \textbf{Expected Output}:
+    \begin{itemize}
+        \item P wave at normal time
+        \item PR interval visibly longer than normal (e.g., 200 ms vs. 160 ms)
+        \item QRS narrow and normal
+        \item Repeats every cycle
+    \end{itemize}
+\end{enumerate}
+
+\subsubsection{Implementation}
+
+File: \texttt{cardiac\_sim/plugins/av\_blocks.py}
+
+\begin{Verbatim}[formatcom=\color{black}]
+class FirstDegreeAVBlock(AbstractPathologyPlugin):
+    @property
+    def name(self) -> str:
+        return "First-Degree AV Block"
+    
+    def apply(self, engine: SimulationEngine, params: SimulationParameters) -> None:
+        self._original_av_delay = params.av_node.av_delay_ms
+        params.av_node.av_delay_ms = 150.0  # Increase by 50 ms
+        engine.apply_pathology(self)
+    
+    def unapply(self, engine: SimulationEngine, params: SimulationParameters) -> None:
+        params.av_node.av_delay_ms = self._original_av_delay
+        engine.apply_pathology(None)
+\end{Verbatim}
+
+\subsection{Second-Degree AV Block (Mobitz II)}
+
+\subsubsection{Clinical Description}
+
+Mobitz II AV block involves \textbf{occasional dropped beats}. Some atrial activations fail to conduct to the ventricles; these manifest as P waves without following QRS complexes.
+
+Unlike Mobitz I (progressive PR prolongation), Mobitz II has:
+
+\begin{itemize}
+    \item Constant \PR interval when conduction occurs
+    \item Suddenly dropped beat(s) with no prior warning
+    \item Often indicates infra-nodal conduction disease (His-Purkinje system)
+    \item More dangerous (risk of complete heart block)
+\end{itemize}
+
+\subsubsection{ECG Characteristics}
+
+\begin{itemize}
+    \item \textbf{PR interval}: Constant (normal or mildly prolonged)
+    \item \textbf{Dropped beats}: Periodic (e.g., 2:1, 3:1 conduction ratios)
+    \item \textbf{Appearance}: P wave without QRS; irregular rhythm
+    \item \textbf{QRS duration}: May be widened (if His-Purkinje disease)
+\end{itemize}
+
+\subsubsection{Simulator Parameters: Reproduction}
+
+\begin{enumerate}
+    \item \textbf{Engine}: Phase 1/2
+    \item \textbf{Pathology Panel}: Check ``Second-Degree AV Block (Mobitz II)''
+    \item Alternative \textbf{Manual Method}:
+    \begin{itemize}
+        \item \textbf{Parameters} $\to$ \textbf{AV Node} section
+        \item Set \textbf{AV Conductance} = 0.5 (50\% conduction; some beats blocked)
+        \item May need to adjust \textbf{AV Refractory Period} to 400 ms
+    \end{itemize}
+    \item \textbf{Expected Output}:
+    \begin{itemize}
+        \item Regular P wave rhythm (atrial activity unchanged)
+        \item Every 2nd, 3rd, or variable P wave followed by QRS
+        \item Dropped beats appearing as P waves alone
+    \end{itemize}
+\end{enumerate}
+
+\subsection{Third-Degree AV Block (Complete Heart Block)}
+
+\subsubsection{Clinical Description}
+
+Complete AV block is \textbf{total failure of AV conduction}. Atria and ventricles beat independently (``AV dissociation''):
+
+\begin{itemize}
+    \item Atria: Normal sinus rhythm, ~60–80 bpm
+    \item Ventricles: Escape rhythm (junctional or idioventricular) at much slower rate, ~30–40 bpm
+\end{itemize}
+
+\subsubsection{ECG Characteristics}
+
+\begin{itemize}
+    \item \textbf{P waves}: Regular, independent of QRS; may appear anywhere in the ECG
+    \item \textbf{QRS complexes}: Slow rate (30–60 bpm), wide morphology
+    \item \textbf{PR relationship}: Completely variable (sometimes short, sometimes P in QRS, sometimes after QRS)
+    \item \textbf{Axis}: May show left axis deviation or extreme axis (if escape rhythm from LV)
+\end{itemize}
+
+\subsubsection{Simulator Parameters: Reproduction}
+
+\begin{enumerate}
+    \item \textbf{Engine}: Phase 1/2 (recommended; cleaner demonstration)
+    \item \textbf{Pathology Panel}: Check ``Third-Degree AV Block (Complete)''
+    \item Or \textbf{Manual Method}:
+    \begin{itemize}
+        \item \textbf{Parameters} $\to$ \textbf{AV Node}
+        \item Set \textbf{AV Conductance} = 0.0 (complete block)
+        \item Set \textbf{Ventricular} $\to$ \textbf{Ectopic Trigger Rate} to 40 bpm (escape rhythm)
+    \end{itemize}
+    \item \textbf{Expected Output}:
+    \begin{itemize}
+        \item Atrial rhythm regular at normal rate (~70 bpm)
+        \item Ventricular rhythm regular at escape rate (~40 bpm)
+        \item P waves and QRS complexes dissociated
+        \item QRS wide (>120 ms) if escape from ventricular tissue
+    \end{itemize}
+\end{enumerate}
+
+\section{Bundle Branch Blocks}
+
+\subsection{Right Bundle Branch Block (RBBB)}
+
+\subsubsection{Clinical Description}
+
+Conduction block in the \textbf{right bundle branch} (RBB) forces RV activation to occur via \textbf{collateral conduction through the left ventricle}. This delays RV activation, causing:
+
+\begin{itemize}
+    \item Widened \QRS (>120 ms)
+    \item Characteristic \textbf{terminal R' wave} (second positive deflection) in lead V1
+    \item S wave in leads I and V5-V6
+\end{itemize}
+
+\subsubsection{ECG Characteristics}
+
+\begin{itemize}
+    \item \textbf{QRS duration}: $\geq 120$ ms (often 120–150 ms)
+    \item \textbf{Lead V1}: Characteristic ``M'' or ``rSR'`` pattern (small r, deep S, tall R')
+    \item \textbf{Leads I, V5-V6}: S wave (negative deflection)
+    \item \textbf{PR interval}: Normal
+    \item \textbf{Axis}: Normal or rightward
+\end{itemize}
+
+\subsubsection{Simulator Parameters: Reproduction}
+
+\begin{enumerate}
+    \item \textbf{Engine}: Phase 1/2 or Phase 3
+    \item \textbf{Pathology Panel}: Check ``Right Bundle Branch Block''
+    \item \textbf{Manual Method}:
+    \begin{itemize}
+        \item \textbf{Parameters} $\to$ \textbf{Ventricular}
+        \item Set \textbf{RBB Conductance} = 0.0
+        \item Observe V1 lead: R' should become visible
+    \end{itemize}
+    \item \textbf{Expected Timing} (Phase 3):
+    \begin{itemize}
+        \item RV activation delayed to $\approx 645$ ms (vs. $\approx 435$ ms normal)
+        \item QRS broadened to $\approx 120$ ms (vs. $\approx 70$ ms)
+        \item T wave morphology also affected (opposite direction)
+    \end{itemize}
+\end{enumerate}
+
+\subsection{Left Bundle Branch Block (LBBB)}
+
+\subsubsection{Clinical Description}
+
+Block in the \textbf{left bundle branch} delays LV activation, forcing it to propagate from RV via collaterals. This causes:
+
+\begin{itemize}
+    \item Widened \QRS (>120 ms, often 140–160 ms)
+    \item Broad, notched positive deflection in lateral leads (I, aVL, V5-V6)
+    \item Absent Q wave in lateral/inferior leads (activation from RV)
+    \item Characteristic ``W'' pattern in lead V1
+\end{itemize}
+
+\subsubsection{ECG Characteristics}
+
+\begin{itemize}
+    \item \textbf{QRS duration}: $\geq 120$ ms (typically 140–160 ms)
+    \item \textbf{Leads I, V5-V6}: Broad positive (R) wave with notch or split
+    \item \textbf{Lead V1}: W pattern (rS or QS)
+    \item \textbf{Absent Q waves}: In leads I, aVL, V5-V6 (no normal Q wave in these leads)
+    \item \textbf{Axis}: Often leftward (left axis deviation)
+\end{itemize}
+
+\subsubsection{Simulator Parameters: Reproduction}
+
+\begin{enumerate}
+    \item \textbf{Engine}: Phase 1/2 or Phase 3
+    \item \textbf{Pathology Panel}: Check ``Left Bundle Branch Block''
+    \item \textbf{Manual Method}:
+    \begin{itemize}
+        \item \textbf{Parameters} $\to$ \textbf{Ventricular}
+        \item Set \textbf{LBB Conductance} = 0.0
+        \item Observe lateral leads: broadened R wave with notch
+    \end{itemize}
+    \item \textbf{Expected Timing} (Phase 3):
+    \begin{itemize}
+        \item LV activation delayed to $\approx 645$ ms
+        \item QRS very broad ($\approx 150$ ms)
+        \item LV dominates morphology (rightward dipole from delayed LV)
+    \end{itemize}
+\end{enumerate}
+
+\section{Atrial Arrhythmias}
+
+\subsection{Atrial Fibrillation (AFib)}
+
+\subsubsection{Clinical Description}
+
+\textbf{Atrial fibrillation} is chaotic, uncoordinated electrical activity in the atria. The atrial rate exceeds 300 bpm with no organized conduction. Only occasional atrial activations penetrate the AV node, producing:
+
+\begin{itemize}
+    \item Absent P waves (replaced by erratic baseline ``fibrillatory waves'')
+    \item Irregularly irregular ventricular rhythm
+    \item Narrow \QRS complexes (if conduction intact below AV node)
+\end{itemize}
+
+\subsubsection{ECG Characteristics}
+
+\begin{itemize}
+    \item \textbf{P waves}: Absent; baseline replaced by fine or coarse undulations (f waves)
+    \item \textbf{Baseline}: Erratic, no isoelectric line
+    \item \textbf{Ventricular rate}: Irregularly irregular (e.g., 60–100 bpm in controlled AFib)
+    \item \textbf{QRS}: Narrow (<120 ms) unless concurrent BBB
+    \item \textbf{RR intervals}: Variable (no two RR intervals the same)
+\end{itemize}
+
+\subsubsection{Simulator Parameters: Reproduction}
+
+\begin{enumerate}
+    \item \textbf{Engine}: Phase 1/2 (Phase 3 would require re-entrant circuit modeling)
+    \item \textbf{Pathology Panel}: Check ``Atrial Fibrillation''
+    \item Implementation detail:
+    \begin{itemize}
+        \item Atrial activation is replaced by chaotic re-entrant patterns
+        \item AV node conduction becomes probabilistic (some atrial waves blocked)
+        \item Baseline shows characteristic fibrillatory waves
+    \end{itemize}
+    \item \textbf{Expected Output}:
+    \begin{itemize}
+        \item No P waves visible
+        \item Baseline wiggles (fine or coarse f waves)
+        \item QRS complexes at irregular intervals
+    \end{itemize}
+\end{enumerate}
+
+\subsection{Sinus Bradycardia}
+
+\subsubsection{Clinical Description}
+
+\textbf{Sinus bradycardia} is a normal sinus rhythm at a rate < 60 bpm. All intervals and morphologies are normal; only the rate is slow.
+
+Causes include athletic conditioning, hypothyroidism, increased vagal tone, or certain medications.
+
+\subsubsection{ECG Characteristics}
+
+\begin{itemize}
+    \item \textbf{Heart rate}: < 60 bpm (e.g., 50 bpm)
+    \item \textbf{PR interval}: Normal
+    \item \textbf{QRS}: Normal
+    \item \textbf{Rhythm}: Regular
+    \item \textbf{P-QRS-T morphology}: Completely normal; unchanged from NSR
+\end{itemize}
+
+\subsubsection{Simulator Parameters: Reproduction}
+
+\begin{enumerate}
+    \item \textbf{Engine}: Phase 1/2 or Phase 3
+    \item \textbf{Pathology Panel}: Check ``Sinus Bradycardia''
+    \item \textbf{Manual Method}:
+    \begin{itemize}
+        \item \textbf{Parameters} $\to$ \textbf{SA Node}
+        \item Set \textbf{Cycle Length (ms)} = 1200 (corresponds to 50 bpm)
+        \item Formula: HR (bpm) = 60,000 / Cycle Length (ms)
+        \item So 1200 ms → 50 bpm
+    \end{itemize}
+    \item \textbf{Expected Output}:
+    \begin{itemize}
+        \item All complexes identical to normal
+        \item HR display shows 50 bpm
+        \item Horizontal spacing between complexes larger than normal
+    \end{itemize}
+\end{enumerate}
+
+\subsection{Sinus Tachycardia}
+
+\subsubsection{Clinical Description}
+
+\textbf{Sinus tachycardia} is normal sinus rhythm at a rate > 100 bpm. All intervals and morphologies remain normal; only the rate is fast.
+
+Causes include exercise, fever, anemia, hyperthyroidism, or sympathetic stimulation.
+
+\subsubsection{ECG Characteristics}
+
+\begin{itemize}
+    \item \textbf{Heart rate}: > 100 bpm (e.g., 140 bpm)
+    \item \textbf{PR interval}: Normal
+    \item \textbf{QRS}: Normal
+    \item \textbf{Rhythm}: Regular
+    \item \textbf{P wave}: May be peaked (increased amplitude) due to faster rate
+    \item \textbf{T wave}: May slightly overlap preceding P wave
+\end{itemize}
+
+\subsubsection{Simulator Parameters: Reproduction}
+
+\begin{enumerate}
+    \item \textbf{Engine}: Phase 1/2 or Phase 3
+    \item \textbf{Pathology Panel}: Check ``Sinus Tachycardia''
+    \item \textbf{Manual Method}:
+    \begin{itemize}
+        \item \textbf{Parameters} $\to$ \textbf{SA Node}
+        \item Set \textbf{Cycle Length (ms)} = 400 (→ 150 bpm)
+        \item Formula: 60,000 / 400 = 150 bpm
+    \end{itemize}
+    \item \textbf{Expected Output}:
+    \begin{itemize}
+        \item All complexes identical to normal
+        \item HR display shows 150 bpm
+        \item Horizontal spacing between complexes narrower than normal
+        \item T wave may slightly overlap next P wave
+    \end{itemize}
+\end{enumerate}
+
+\section{Ventricular Arrhythmias}
+
+\subsection{Premature Ventricular Contraction (PVC)}
+
+\subsubsection{Clinical Description}
+
+A \textbf{PVC} is an ectopic ventricular beat that occurs earlier than expected in the cardiac cycle. On the ECG:
+
+\begin{itemize}
+    \item Wide \QRS (>120 ms) with abnormal morphology
+    \item Abnormal T wave (opposite polarity to QRS)
+    \item Compensatory pause (next sinus beat occurs at normal time)
+    \item Variable coupling interval (time from previous QRS to PVC)
+\end{itemize}
+
+\subsubsection{ECG Characteristics}
+
+\begin{itemize}
+    \item \textbf{QRS duration}: >120 ms, often 140–180 ms
+    \item \textbf{QRS morphology}: Abnormal; often broad and slurred
+    \item \textbf{T wave}: Opposite polarity to QRS (discordant ST-T)
+    \item \textbf{PR/PP interval}: No P wave before the PVC
+    \item \textbf{Coupling interval}: Relatively fixed for multiple PVCs of same origin
+\end{itemize}
+
+\subsubsection{Simulator Parameters: Reproduction}
+
+\begin{enumerate}
+    \item \textbf{Engine}: Phase 1/2 (preferred) or Phase 3
+    \item \textbf{Pathology Panel}: Check ``Premature Ventricular Contraction''
+    \item \textbf{Manual Method}:
+    \begin{itemize}
+        \item \textbf{Parameters} $\to$ \textbf{Ventricular}
+        \item Set \textbf{Ectopic Trigger Rate (bpm)} = 60
+        \item Set \textbf{Ectopic Coupling Interval (ms)} = 600 (PVC fires 600 ms after normal beat)
+    \end{itemize}
+    \item \textbf{Expected Output}:
+    \begin{itemize}
+        \item Normal sinus beats
+        \item Every so often, wide QRS with abnormal morphology
+        \item Compensatory pause after PVC (total RR interval = 2 × sinus interval)
+    \end{itemize}
+\end{enumerate}
+
+\subsection{Ventricular Fibrillation (VF)}
+
+\subsubsection{Clinical Description}
+
+\textbf{Ventricular fibrillation} is chaotic, uncoordinated electrical activity in the ventricles. There is no organized contractile function; the ECG shows:
+
+\begin{itemize}
+    \item Erratic, low-amplitude oscillations (``fine VF'') or larger waves (``coarse VF'')
+    \item No identifiable QRS, T, or ST segment
+    \item Hemodynamic collapse (loss of perfusion)
+    \item Lethal rhythm unless rapidly defibrillated
+\end{itemize}
+
+\subsubsection{ECG Characteristics}
+
+\begin{itemize}
+    \item \textbf{Baseline}: Irregular undulations, no isoelectric segments
+    \item \textbf{Amplitude}: Fine VF shows low amplitude (<1 mm); coarse VF shows >5 mm waves
+    \item \textbf{Frequency}: 150–300 Hz baseline oscillations
+    \item \textbf{QRS/T}: Absent
+    \item \textbf{Rate}: Unmeasurable
+\end{itemize}
+
+\subsubsection{Simulator Parameters: Reproduction}
+
+\begin{enumerate}
+    \item \textbf{Engine}: Phase 1/2 (with special re-entrant modeling) or Phase 3
+    \item \textbf{Pathology Panel}: Check ``Ventricular Fibrillation''
+    \item Implementation detail:
+    \begin{itemize}
+        \item Ventricular conduction is randomized
+        \item Multiple competing depolarization foci activate ventricles chaotically
+    \end{itemize}
+    \item \textbf{Expected Output}:
+    \begin{itemize}
+        \item Erratic baseline; no organized complexes
+        \item Fine or coarse undulations depending on rate of ectopic foci
+    \end{itemize}
+\end{enumerate}
+
+% ================================================================
+\chapter{Architecture and Design Diagrams}
+% ================================================================
+
+\section{Class Hierarchy Diagram}
+
+\begin{figure}[H]
+    \centering
+    
+    \begin{center}
+    \texttt{[Diagram - text description in document]}
+    \end{center}
+    
+    \caption{Class hierarchy and composition relationships. Abstract \texttt{SimulationEngine} is implemented by two concrete engines. \texttt{ConductionCableEngine} owns a \texttt{ConductionCable1D} and uses \texttt{LeadFieldModel}. GUI components interface with a worker thread.}
+    \label{fig:class_hierarchy}
+\end{figure}
+
+\section{Function Call Graph (Phase 3)}
+
+\begin{figure}[H]
+    \centering
+    
+    \begin{center}
+    \texttt{[Diagram - text description in document]}
+    \end{center}
+    
+    \caption{Main simulation loop call graph for Phase 3 engine. Each frame ($\sim$2 ms), \texttt{step} is called, which advances the cable via 20 micro-steps and computes the ECG dipole.}
+    \label{fig:call_graph}
+\end{figure}
+
+\section{Data Flow: Parameter Changes}
+
+\begin{figure}[H]
+    \centering
+    
+    \begin{center}
+    \texttt{[Diagram - text description in document]}
+    \end{center}
+    
+    \caption{Data flow when user adjusts a parameter. The change propagates through the parameter model to the engine, which reinitializes and begins generating new ECG samples reflected in the display.}
+    \label{fig:param_flow}
+\end{figure}
+
+\section{State Machine: Beat Lifecycle (Phase 3)}
+
+\begin{figure}[H]
+    \centering
+    
+    \begin{center}
+    \texttt{[Diagram - text description in document]}
+    \end{center}
+    
+    \caption{Beat state machine for \texttt{ConductionCableEngine}. A beat transitions from ``No Beat'' to ``In Progress'' when the SA node fires, then to ``Committed'' when all ventricular nodes have activated or a timeout is reached.}
+    \label{fig:beat_state}
+\end{figure}
+
+% ================================================================
+\chapter{Technical Reference and Appendices}
+% ================================================================
+
+\section{FHN Model Constants and Ranges}
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{|l|r|p{4cm}|}
+    \hline
+    \textbf{Parameter} & \textbf{Phase 3-D Value} & \textbf{Notes} \\
+    \hline
+    $\tau$ (time scale) & 15 ms & Calibrated for correct P/PR/QRS timing \\
+    $\varepsilon$ (recovery rate) & 0.08 & Controls APD; smaller = longer APD \\
+    $a$ (FHN param) & 0.7 & Typical literature value \\
+    $b$ (FHN param) & 0.8 & Typical literature value \\
+    $\Delta t_{\text{int}}$ (micro-step) & 0.1 ms & 10 steps per output frame \\
+    $N_{\text{atr}}$ (atrial cells) & 8 & SA + RA + LA \\
+    $N_{\text{ven}}$ (ventricular cells) & 10 & His + LBB + LV \\
+    $D_{\text{atr,max}}$ & 2.88 & Atrial diffusion \\
+    $D_{\text{ven,max}}$ & 72.0 & Ventricular diffusion (His-LBB pathway) \\
+    $D_{\text{lv}}$ & 3.0 & LV myocardial diffusion \\
+    $V_{\text{rest}}$ & $-1.2$ & Normalized rest potential \\
+    $V_{\text{peak}}$ & $+2.0$ & Normalized depolarization peak \\
+    $V_{\text{threshold}}$ & $-0.5$ & Activation threshold (normalized) \\
+    \hline
+    \end{tabular}
+    \caption{FHN model constants for Phase 3-D (final calibration).}
+    \label{tab:fhn_constants}
+\end{table}
+
+\section{ECG Node Configuration (Phase 3)}
+
+\begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{|l|r|r|r|r|}
+    \hline
+    \textbf{Node} & \textbf{Depol $\sigma$ (ms)} & \textbf{Repol Delay (ms)} & \textbf{Repol $\sigma$ (ms)} & \textbf{Role} \\
+    \hline
+    SA & 12.7 & 280 & 50 & SA node \\
+    RA & 12.7 & 280 & 50 & Right atrium \\
+    LA & 12.7 & 280 & 50 & Left atrium \\
+    AV & 12.7 & 280 & 50 & AV node \\
+    HIS & 12.7 & 280 & 50 & His bundle \\
+    LBB & 12.7 & 280 & 50 & L. bundle branch \\
+    RBB & 12.7 & 280 & 50 & R. bundle branch \\
+    SEPT & 12.7 & 280 & 50 & Septum \\
+    LV & 40.0 & 280 & 50 & L. ventricle (widened depol) \\
+    RV & 12.7 & 280 & 50 & R. ventricle \\
+    \hline
+    \end{tabular}
+    \caption{ECG node Gaussian parameters. LV depol\_duration widened to 40 ms so adjacent nodes produce overlapping Gaussians → smooth QRS morphology.}
+    \label{tab:ecg_nodes}
+\end{table}
+
+\section{Installation and Running}
+
+\subsection{Prerequisites}
+
+\begin{itemize}
+    \item Python 3.12+
+    \item PyQt6 ≥ 6.0
+    \item NumPy ≤ 2.4 (Numba requires NumPy $\le$ 2.4; we use 2.5 which forces fallback)
+    \item pyqtgraph ≥ 0.13.0
+    \item (Optional) Numba ≥ 0.59 for JIT compilation (requires compatible NumPy)
+\end{itemize}
+
+\subsection{Setup Steps}
+
+\begin{Verbatim}[formatcom=\color{black}][language=bash]
+# Clone repository
+git clone <repo_url>
+cd ECG_simulator
+
+# Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate  # or .venv\textbackslash{}Scripts\textbackslash{}activate on Windows
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run application
+python main.py
+\end{Verbatim}
+
+\subsection{Running Tests}
+
+\begin{Verbatim}[formatcom=\color{black}][language=bash]
+# Run all unit tests
+python -m pytest tests/
+
+# Run specific test file
+python -m pytest tests/test_cable_model.py -v
+
+# Run with coverage report
+python -m pytest tests/ --cov=cardiac_sim --cov-report=html
+\end{Verbatim}
+
+\section{Performance Considerations}
+
+\subsection{Phase 1/2 (Graph Engine)}
+
+\begin{itemize}
+    \item Execution time per step: $\approx$ 0.1 ms
+    \item Bottleneck: BFS graph traversal and Gaussian dipole summation
+    \item Scales well to 1000+ Hz
+\end{itemize}
+
+\subsection{Phase 3 (Cable Engine)}
+
+\begin{itemize}
+    \item Execution time per step: $\approx$ 1--2 ms (on modern CPU)
+    \item Simulated time per wall-clock second: $\approx$ 2.2$\times$ real-time
+    \item Bottleneck: $N \times M$ FHN integration (cables + micro-steps)
+    \item Numba JIT (if available): $\approx$ 10--20$\times$ speedup possible
+    \item Current: NumPy fallback due to NumPy 2.5 incompatibility
+\end{itemize}
+
+\section{Validation Results}
+
+\subsection{Phase 3-D Timing Validation}
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{|l|r|r|}
+    \hline
+    \textbf{Interval} & \textbf{Simulator} & \textbf{Clinical Target} \\
+    \hline
+    P wave duration & 64 ms & 40--100 ms ✓ \\
+    PR interval & 196 ms & 120--200 ms ✓ \\
+    QRS duration & 70 ms & <120 ms ✓ \\
+    QT interval & 360 ms & 300--440 ms ✓ \\
+    Heart rate & 70 bpm & 60--100 bpm ✓ \\
+    \hline
+    \end{tabular}
+    \caption{Phase 3-D validated timing intervals compared to clinical targets (normal sinus rhythm at 70 bpm).}
+    \label{tab:timing_validation}
+\end{table}
+
+\subsection{Multi-Beat Rhythm (Phase 3)}
+
+Successfully generates 6 consecutive QRS complexes at 70 bpm over 5 seconds without numerical artifacts or premature termination.
+
+\subsection{Amplitude Validation (Phase 3)}
+
+\begin{itemize}
+    \item QRS peak-to-trough: $\approx$ 1.3 mV (clinical: 0.5--2.5 mV) ✓
+    \item T wave amplitude: $\approx$ 0.6 mV
+    \item QRS/T ratio: $\approx$ 2.2 (clinical normal: 1--2.5) ✓
+\end{itemize}
+
+\section{File Organization Summary}
+
+\begin{center}
+\begin{longtable}{|l|l|r|}
+\hline
+\textbf{File Path} & \textbf{Purpose} & \textbf{Lines} \\
+\hline
+\endhead
+\hline
+\endfoot
+\texttt{main.py} & Application entry point & 50 \\
+\texttt{cardiac\_sim/core/parameter\_model.py} & Parameter dataclasses & 200 \\
+\texttt{cardiac\_sim/core/interfaces.py} & Abstract base classes & 80 \\
+\texttt{cardiac\_sim/core/tissue/cable\_1d.py} & FHN cable implementation & 500 \\
+\texttt{cardiac\_sim/core/conduction/graph.py} & Graph structure & 150 \\
+\texttt{cardiac\_sim/core/cell\_models/fitzhugh\_nagumo.py} & FHN cell model & 100 \\
+\texttt{cardiac\_sim/core/ecg/lead\_field.py} & Lead vectors & 120 \\
+\texttt{cardiac\_sim/core/simulation\_worker.py} & Threading wrapper & 150 \\
+\texttt{cardiac\_sim/simulation/graph\_engine.py} & Phase 1/2 engine & 400 \\
+\texttt{cardiac\_sim/simulation/cable\_engine.py} & Phase 3 engine & 450 \\
+\texttt{cardiac\_sim/gui/main\_window.py} & Main GUI window & 250 \\
+\texttt{cardiac\_sim/gui/parameter\_panel.py} & Parameter tree UI & 180 \\
+\texttt{cardiac\_sim/gui/pathology\_panel.py} & Pathology selector & 150 \\
+\texttt{cardiac\_sim/gui/ecg\_display.py} & ECG plotter & 200 \\
+\texttt{cardiac\_sim/plugins/av\_blocks.py} & AV block pathologies & 100 \\
+\texttt{cardiac\_sim/plugins/bundle\_blocks.py} & BBB pathologies & 80 \\
+\texttt{cardiac\_sim/plugins/atrial.py} & Atrial pathologies & 100 \\
+\texttt{cardiac\_sim/plugins/ventricular.py} & Ventricular pathologies & 120 \\
+\texttt{cardiac\_sim/plugins/sinus\_rhythms.py} & Sinus rhythm variants & 80 \\
+\hline
+\multicolumn{2}{|r|}{\textbf{Total}} & \approx 3500 \\
+\hline
+\end{longtable}
+\end{center}
+
+\section{Glossary of Abbreviations}
+
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Abbreviation} & \textbf{Meaning} \\
+\hline
+\texttt{SA} & Sinoatrial (atrial pacemaker) \\
+\texttt{AV} & Atrioventricular (AV node) \\
+\texttt{RA/LA} & Right/Left atrium \\
+\texttt{RV/LV} & Right/Left ventricle \\
+\texttt{RBBB/LBBB} & Right/Left bundle branch block \\
+\texttt{PR} & Atrial to ventricular conduction time \\
+\texttt{QRS} & Ventricular depolarization duration \\
+\texttt{ST} & Repolarization segment \\
+\texttt{ECG} & Electrocardiogram \\
+\texttt{APD} & Action potential duration \\
+\texttt{CV} & Conduction velocity \\
+\texttt{FHN} & FitzHugh-Nagumo (ionic model) \\
+\texttt{PVC} & Premature ventricular contraction \\
+\texttt{AFib} & Atrial fibrillation \\
+\texttt{VF} & Ventricular fibrillation \\
+\hline
+\end{tabular}
+
+\section{References and Further Reading}
+
+\begin{enumerate}
+    \item Hodgkin, A. L., \& Huxley, A. F. (1952). A quantitative description of membrane current and its application to conduction and excitation in nerve. \textit{J. Physiology}, 117(4), 500--544.
+    
+    \item FitzHugh, R. (1961). Impulses and physiological states in theoretical models of nerve membrane. \textit{Biophysical Journal}, 1(6), 445--466.
+    
+    \item Keener, J. P., \& Sneyd, J. (2009). \textit{Mathematical Physiology: I. Cellular Physiology} (2nd ed.). Springer.
+    
+    \item Roth, B. J. (1997). Electrical conductivity values used with the bidomain model of cardiac tissue. \textit{IEEE Trans. Biomed. Eng.}, 44(4), 326--328.
+    
+    \item Maringhini, G., et al. (2015). ECG simulation using cellular automata. \textit{Comput. Biol. Med.}, 65, 207--215.
+\end{enumerate}
+
+\end{document}

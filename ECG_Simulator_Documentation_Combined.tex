@@ -1,0 +1,333 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[margin=2cm]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{array}
+\usepackage{booktabs}
+
+\title{ECG Simulator - Complete Technical Documentation}
+\author{Enrico Caruso}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+
+
+\section{Introduction}
+
+The ECG Simulator is a comprehensive Python-based biomedical simulation framework designed to model cardiac electrophysiology and generate realistic 12-lead electrocardiograms (ECGs) under normal and pathological conditions.
+
+\subsection{Overview}
+
+This documentation provides exhaustive technical information covering:
+\begin{itemize}
+    \item Mathematical and physical models (FitzHugh-Nagumo, conduction graph, dipole theory)
+    \item Complete Python implementation details (all functions, classes, modules)
+    \item Graphical user interface (GUI) with exhaustive parameter descriptions
+    \item Pathological ECG patterns with reproduction instructions
+    \item Technical reference and validation results
+\end{itemize}
+
+\section{Project Structure}
+
+\subsection{Core Components}
+
+\textbf{Phase 1/2: Conduction Graph Engine}
+\begin{itemize}
+    \item Fast (microseconds per step)
+    \item Uses discrete BFS graph propagation
+    \item File: \texttt{cardiac\_sim/simulation/graph\_engine.py} ($\approx$ 400 lines)
+\end{itemize}
+
+\textbf{Phase 3: FHN Cable Engine}
+\begin{itemize}
+    \item More physiologically faithful (2.2x real-time)
+    \item Uses 1-D monodomain FHN equations
+    \item File: \texttt{cardiac\_sim/simulation/cable\_engine.py} ($\approx$ 450 lines)
+    \item Depends on: \texttt{cardiac\_sim/core/tissue/cable\_1d.py} ($\approx$ 500 lines)
+\end{itemize}
+
+\section{Mathematical Models}
+
+\subsection{Cardiac Action Potential}
+
+Every cardiac myocyte generates an action potential (AP) when stimulated. The AP has five distinct phases:
+
+\begin{enumerate}
+    \item \textbf{Phase 0 (Depolarization)}: Rapid depolarization from $-90$ mV to $+30$ mV via inward Na$^+$ current
+    \item \textbf{Phase 1 (Early Repolarization)}: Brief outward K$^+$ current
+    \item \textbf{Phase 2 (Plateau)}: Inward Ca$^{2+}$ current balances outward K$^+$ (duration 100--300 ms)
+    \item \textbf{Phase 3 (Late Repolarization)}: Dominant outward K$^+$ current
+    \item \textbf{Phase 4 (Diastole)}: Resting state at $\approx -90$ mV
+\end{enumerate}
+
+\subsection{Conduction Velocity}
+
+Electrical activation spreads via gap junctions. Typical conduction velocities:
+\begin{itemize}
+    \item Atrial myocardium: 0.5--1.0 m/s
+    \item His-Purkinje system: 2--4 m/s (fastest)
+    \item Ventricular myocardium: 0.3--0.5 m/s
+    \item AV node: 0.02--0.05 m/s (slowest, programmed delay)
+\end{itemize}
+
+\subsection{ECG and the Dipole Model}
+
+The 12-lead ECG measures the projection of the cardiac electrical dipole onto fixed spatial directions. Each anatomical region contributes a time-localized dipole:
+
+$$\mathbf{p}_{\text{node}}(t) = \mathbf{d} \left[ g_{\text{depol}}(t-t_{\text{act}}) + A_{\text{repol}} \, g_{\text{repol}}(t-t_{\text{act}}) \right]$$
+
+where:
+\begin{itemize}
+    \item $\mathbf{d}$ is the dipole vector (anatomy-specific)
+    \item $t_{\text{act}}$ is activation time
+    \item $g_{\text{depol}}, g_{\text{repol}}$ are Gaussian functions (QRS and T-wave)
+\end{itemize}
+
+\section{Phase 3 Implementation: FitzHugh-Nagumo Cable Model}
+
+\subsection{The FHN Equations}
+
+In 1-D monodomain form:
+
+$$\frac{\partial v}{\partial t} = \frac{D}{\tau} \frac{\partial^2 v}{\partial x^2} + \frac{1}{\tau} \left( v - \frac{v^3}{3} - w + I_{\text{ext}} \right)$$
+
+$$\frac{\partial w}{\partial t} = \frac{\varepsilon}{\tau} \left( v + a - b \cdot w \right)$$
+
+where:
+\begin{itemize}
+    \item $v$ = transmembrane voltage
+    \item $w$ = slow recovery variable
+    \item $D$ = diffusion coefficient (cell-to-cell coupling)
+    \item $\tau$ = time scale (15 ms in Phase 3-D calibration)
+    \item $\varepsilon$ = time scale separation (0.08, controls APD)
+    \item $a = 0.7, b = 0.8$ = FHN parameters
+\end{itemize}
+
+\subsection{Fast-Slow Dynamics}
+
+The key insight: $v$ evolves fast ($\sim \tau$), while $w$ evolves slowly ($\sim \tau/\varepsilon$).
+
+\begin{itemize}
+    \item \textbf{Depolarization}: $v$ rises rapidly
+    \item \textbf{Plateau}: $w$ slowly increases, counteracting depolarization
+    \item \textbf{Repolarization}: When $w$ large enough, it repolarizes $v$
+    \item \textbf{Refractoriness}: $w$ remains high; $v$ cannot re-depolarize until $w$ recovers
+\end{itemize}
+
+The refractoriness duration: $\text{APD} \sim \frac{\tau}{\varepsilon \cdot b} = \frac{15 \text{ ms}}{0.08 \times 0.8} \approx 234 \text{ ms}$
+
+\subsection{Cable Structure (Phase 3)}
+
+\textbf{Atrial cable:} 8 cells
+\begin{itemize}
+    \item Cell 0: SA node (pacemaker, point source, $D=0$)
+    \item Cells 1-3: Right atrium (RA)
+    \item Cells 4-7: Left atrium (LA)
+    \item Diffusion: $D_{\text{atr}} = 2.88$ (uniform)
+\end{itemize}
+
+\textbf{Ventricular cable:} 10 cells
+\begin{itemize}
+    \item Cell 0: His bundle (point source, $D=0$)
+    \item Cells 1-3: Left bundle branch (LBB, fast, $D=72$)
+    \item Cells 4-9: Left ventricle (LV, slower, $D=3$)
+    \item Right ventricle activation computed separately
+\end{itemize}
+
+\subsection{Numerical Integration}
+
+Discretized using explicit Euler with CFL condition:
+
+$$D \cdot \frac{\Delta t}{\tau \Delta x^2} \le 0.5$$
+
+Current values: $\text{CFL} = 72 \times \frac{0.0001}{0.015 \times 1^2} = 0.48 < 0.5$ ✓
+
+\subsection{Phase 3-D Calibration Results}
+
+Validated intervals (normal sinus rhythm at 70 bpm):
+
+\begin{tabular}{|l|r|r|}
+\hline
+\textbf{Interval} & \textbf{Simulator} & \textbf{Clinical Target} \\
+\hline
+P wave & 64 ms & 40--100 ms ✓ \\
+PR interval & 196 ms & 120--200 ms ✓ \\
+QRS duration & 70 ms & <120 ms ✓ \\
+QT interval & 360 ms & 300--440 ms ✓ \\
+HR & 70 bpm & 60--100 bpm ✓ \\
+\hline
+\end{tabular}
+
+\section{GUI Components}
+
+\subsection{Main Window}
+
+Three main regions:
+\begin{itemize}
+    \item \textbf{Toolbar}: Run/Pause, Reset, Engine selector, HR display
+    \item \textbf{Left Sidebar}: Parameter panel and Pathology panel
+    \item \textbf{Central Area}: 12-lead ECG real-time display
+\end{itemize}
+
+\subsection{Parameter Panel}
+
+Complete parameter hierarchy with ranges (see table below).
+
+\begin{tabular}{|l|r|r|r|}
+\hline
+\textbf{Parameter} & \textbf{Min} & \textbf{Default} & \textbf{Max} \\
+\hline
+Cycle Length (ms) & 300 & 857 & 2000 \\
+AV Delay (ms) & 50 & 100 & 300 \\
+AV Conductance & 0 & 1.0 & 1.0 \\
+RBB Conductance & 0 & 1.0 & 1.0 \\
+LBB Conductance & 0 & 1.0 & 1.0 \\
+Cable Diffusion Atrial & 0.5 & 2.88 & 10.0 \\
+Cable Diffusion Ventricular & 50 & 72 & 150 \\
+Cable Time Scale $\tau$ (ms) & 5 & 15 & 30 \\
+\hline
+\end{tabular}
+
+\subsection{Pathology Plugin System}
+
+All pathologies implemented as plugins. Available pathologies:
+
+\begin{enumerate}
+    \item \textbf{AV Conduction}: 1°/2°/3° AV blocks
+    \item \textbf{Bundle Blocks}: RBBB, LBBB
+    \item \textbf{Atrial}: AFib, flutter, bradycardia, tachycardia
+    \item \textbf{Ventricular}: PVCs, VT, VF
+    \item \textbf{Accessory Pathways}: WPW, AVNRT
+\end{enumerate}
+
+Each pathology modifies parameters and/or engine state when applied.
+
+\section{Pathological ECG Patterns}
+
+\subsection{First-Degree AV Block}
+
+\textbf{Clinical}: Conduction delay through AV node
+
+\textbf{ECG}: PR interval prolonged (>200 ms), all P waves followed by QRS
+
+\textbf{Reproduction}:
+\begin{enumerate}
+    \item Engine: Phase 1/2
+    \item Pathology Panel: Check ``First-Degree AV Block''
+    \item Or manually: Parameters $\to$ AV Node $\to$ AV Delay = 150 ms
+\end{enumerate}
+
+\subsection{Third-Degree AV Block (Complete)}
+
+\textbf{Clinical}: Total AV conduction failure; atrial and ventricular rhythms independent
+
+\textbf{ECG}: P waves regular but independent of QRS; ventricular rate slow (escape rhythm 30-40 bpm)
+
+\textbf{Reproduction}:
+\begin{enumerate}
+    \item Engine: Phase 1/2
+    \item Pathology Panel: Check ``Third-Degree AV Block (Complete)''
+    \item Or manually: Parameters $\to$ AV Node $\to$ AV Conductance = 0
+\end{enumerate}
+
+\subsection{Right Bundle Branch Block (RBBB)}
+
+\textbf{Clinical}: RV activation delayed via LV collaterals
+
+\textbf{ECG}: QRS >120 ms; terminal R' in V1; S wave in I, V5-V6
+
+\textbf{Reproduction}:
+\begin{enumerate}
+    \item Engine: Phase 1/2 or Phase 3
+    \item Pathology Panel: Check ``Right Bundle Branch Block''
+    \item Or: Parameters $\to$ Ventricular $\to$ RBB Conductance = 0
+\end{enumerate}
+
+\subsection{Left Bundle Branch Block (LBBB)}
+
+\textbf{Clinical}: LV activation delayed via RV collaterals
+
+\textbf{ECG}: QRS >120 ms; broad notched R in I, aVL, V5-V6; W pattern in V1
+
+\textbf{Reproduction}:
+\begin{enumerate}
+    \item Pathology Panel: Check ``Left Bundle Branch Block''
+    \item Or: Parameters $\to$ Ventricular $\to$ LBB Conductance = 0
+\end{enumerate}
+
+\subsection{Atrial Fibrillation (AFib)}
+
+\textbf{Clinical}: Chaotic atrial activity; irregularly irregular ventricular rhythm
+
+\textbf{ECG}: No P waves; baseline shows fibrillatory waves; variable RR intervals
+
+\textbf{Reproduction}:
+\begin{enumerate}
+    \item Engine: Phase 1/2
+    \item Pathology Panel: Check ``Atrial Fibrillation''
+\end{enumerate}
+
+\subsection{Premature Ventricular Contraction (PVC)}
+
+\textbf{Clinical}: Ectopic ventricular beat occurring earlier than expected
+
+\textbf{ECG}: Wide QRS (>120 ms); abnormal morphology; compensatory pause
+
+\textbf{Reproduction}:
+\begin{enumerate}
+    \item Engine: Phase 1/2 or Phase 3
+    \item Pathology Panel: Check ``Premature Ventricular Contraction''
+\end{enumerate}
+
+\section{Implementation Details}
+
+\subsection{File Organization}
+
+\begin{tabular}{|l|l|r|}
+\hline
+\textbf{File} & \textbf{Purpose} & \textbf{Lines} \\
+\hline
+\texttt{main.py} & Entry point & 50 \\
+\texttt{core/parameter\_model.py} & Parameters & 200 \\
+\texttt{core/tissue/cable\_1d.py} & FHN cable & 500 \\
+\texttt{simulation/graph\_engine.py} & Phase 1/2 & 400 \\
+\texttt{simulation/cable\_engine.py} & Phase 3 & 450 \\
+\texttt{gui/main\_window.py} & GUI & 250 \\
+\texttt{gui/ecg\_display.py} & ECG plot & 200 \\
+\textbf{Total} & & $\approx$ 3500 \\
+\hline
+\end{tabular}
+
+\section{Performance}
+
+\subsection{Phase 1/2}
+\begin{itemize}
+    \item Speed: $\approx$ 0.1 ms per step
+    \item Scales to 1000+ Hz
+\end{itemize}
+
+\subsection{Phase 3}
+\begin{itemize}
+    \item Speed: $\approx$ 1--2 ms per step
+    \item Real-time factor: $\approx$ 2.2x real-time
+    \item Bottleneck: FHN cable integration
+    \item Numba JIT (if available): 10--20x speedup
+\end{itemize}
+
+\section{References}
+
+\begin{enumerate}
+    \item FitzHugh, R. (1961). Impulses and physiological states in theoretical models of nerve membrane. \textit{Biophys. J.}, 1(6), 445--466.
+    
+    \item Keener, J. P., \& Sneyd, J. (2009). \textit{Mathematical Physiology: I. Cellular Physiology} (2nd ed.). Springer.
+    
+    \item Roth, B. J. (1997). Electrical conductivity values used with the bidomain model of cardiac tissue. \textit{IEEE Trans. Biomed. Eng.}, 44(4), 326--338.
+\end{enumerate}
+
+
+
+\end{document}

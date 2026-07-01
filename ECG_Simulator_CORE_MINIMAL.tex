@@ -1,0 +1,723 @@
+%!TEX program = pdflatex
+% ECG SIMULATOR — COMPREHENSIVE TECHNICAL DOCUMENTATION
+% MINIMAL COMPILABLE VERSION
+
+\documentclass[12pt]{book}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+
+\title{\textbf{ECG Simulator}\\Complete Technical Documentation}
+\author{Project Documentation}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% ============================================================================
+% CHAPTER 1
+% ============================================================================
+
+\chapter{Project Overview}
+
+\section{Executive Summary}
+
+The ECG Simulator is a Python-based cardiac electrophysiology platform generating clinically realistic 12-lead electrocardiograms through three developmental phases:
+
+\begin{itemize}
+  \item \textbf{Phase 1/2}: Discrete conduction graph (DAG + BFS algorithm)
+  \item \textbf{Phase 3}: FitzHugh-Nagumo 1-D cable model with emergent refractoriness
+  \item \textbf{Phase 4+}: Full 3-D tissue, advanced arrhythmia mechanisms
+\end{itemize}
+
+\section{Clinical Validation}
+
+Key timing metrics (Phase 3-D calibrated):
+
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Interval} & \textbf{Simulator} & \textbf{Clinical Normal} & \textbf{Status} \\
+\hline
+P-wave & 64 ms & 40--100 ms & ✓ \\
+PR interval & 196 ms & 120--200 ms & ✓ \\
+QRS & 70 ms & $<$120 ms & ✓ \\
+Heart rate & 70 bpm & 60--100 bpm & ✓ \\
+QRS amplitude & 1.3 mV & 0.5--2.5 mV & ✓ \\
+\hline
+\end{tabular}
+
+\section{Architecture}
+
+Three-layer system:
+
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Layer} & \textbf{Responsibility} \\
+\hline
+GUI/UI & PyQt6 parameter control, pyqtgraph ECG display \\
+Simulation & Beat sequencing, plugin stacking, time-stepping \\
+Physics & NumPy cell models, conduction, 12-lead forward model \\
+\hline
+\end{tabular}
+
+% ============================================================================
+% CHAPTER 2
+% ============================================================================
+
+\chapter{Cardiac Physiology From First Principles}
+
+\section{Conduction System Anatomy}
+
+\subsection{SA Node (Pacemaker)}
+
+Located at junction of superior vena cava and right atrium. Contains pacemaker cells with spontaneous ``funny current'' ($I_f$) via HCN channels. Fires at programmed interval (default 70 bpm = 857 ms). Primary rate-determining site of the heart.
+
+\subsection{Atrial Myocardium}
+
+Conduction velocity: 0.5--1.0 m/s. Activation spreads right-to-left. Produces P-wave on ECG. Refractory period: 150--200 ms.
+
+\subsection{AV Node}
+
+Conduction velocity: $\approx$ 0.05 m/s (extremely slow). Provides physiological delay ($\approx$ 100 ms) between atrial and ventricular activation. Refractory period: 250--350 ms (longest in system). Acts as ``safety valve'' blocking premature beats.
+
+\subsection{His Bundle and Purkinje}
+
+Fast conduction tissue (2--4 m/s). Divides into left and right bundle branches. Delivers impulse to both ventricles nearly simultaneously.
+
+\subsection{Ventricular Myocardium}
+
+Working myocardium. Conduction velocity: 0.4--0.5 m/s. Produces QRS complex on ECG. Refractory period: 250--300 ms. Pumps blood to lungs (RV) and systemic circulation (LV).
+
+\section{The Cardiac Action Potential}
+
+Five phases of the action potential:
+
+\begin{enumerate}
+  \item \textbf{Phase 0 — Rapid Depolarization} ($\approx$ 5 ms, $-85$ to $+30$ mV): Sodium channels open; $I_{Na}$ dominates; steep upstroke.
+  
+  \item \textbf{Phase 1 — Early Repolarization} ($\approx$ 10 ms): Transient outward potassium current creates notch.
+  
+  \item \textbf{Phase 2 — Plateau} ($\approx$ 250 ms): Inward calcium ($I_L$) balances outward potassium; prolonged depolarization.
+  
+  \item \textbf{Phase 3 — Rapid Repolarization} ($\approx$ 30 ms): Delayed rectifier potassium ($I_K$) dominates. Returns to $-85$ mV. Produces T-wave on ECG.
+  
+  \item \textbf{Phase 4 — Resting} ($\approx$ 600+ ms): Cell at stable resting potential until next beat.
+\end{enumerate}
+
+\section{Refractoriness}
+
+After depolarization, cells enter refractory periods:
+
+\begin{itemize}
+  \item \textbf{Absolute Refractory Period (ARP)}: Sodium channels inactivated. No action potential possible. Duration $\approx$ 250 ms.
+  
+  \item \textbf{Relative Refractory Period (RRP)}: Sodium recovered but potential negative. Supranormal stimulus can trigger action potential. Duration $\approx$ 50--100 ms.
+\end{itemize}
+
+\section{ECG Basics — Dipole Model and Lead Vectors}
+
+The cardiac dipole vector:
+$$\mathbf{p}(t) = \sum_i \mathbf{p}_i(t)$$
+
+Projection onto lead $k$:
+$$V_k(t) = \mathbf{L}_k \cdot \mathbf{p}(t)$$
+
+The 12 leads measure cardiac electrical activity from 12 standard directions:
+
+Lead I (left), II (inferior-right, +60°), III (inferior-left, +120°), aVR (right-superior), aVL (left-superior), aVF (inferior), V1-V2 (right-anterior, transverse plane), V3-V4 (central-anterior), V5-V6 (left-lateral).
+
+\section{FitzHugh-Nagumo Cell Model}
+
+The FHN model is a 2-variable simplified model of cellular excitability:
+
+\begin{equation}
+\frac{dv}{d\tau} = v - \frac{v^3}{3} - w + I_{\text{ext}}
+\end{equation}
+
+\begin{equation}
+\frac{dw}{d\tau} = \varepsilon (v + a - b \cdot w)
+\end{equation}
+
+where:
+\begin{itemize}
+  \item $v$ = fast variable (voltage surrogate, dimensionless, $-1.2$ to $+2.0$)
+  \item $w$ = slow recovery variable
+  \item $\varepsilon = 0.08$ = time-scale separation parameter
+  \item $a = 0.7, b = 0.8$ = model parameters
+  \item $I_{\text{ext}}$ = external stimulus
+\end{itemize}
+
+Strengths: Simple (only 2 ODEs), captures essential action potential shape, exhibits emergent refractoriness, computationally efficient.
+
+Limitations: Not quantitatively accurate for specific ionic channels; fixed action potential duration independent of pacing rate.
+
+Physical time scaling: $\tau_s = 0.015$ s = 15 ms (calibrated to match clinical PR and QRS durations).
+
+% ============================================================================
+% CHAPTER 3
+% ============================================================================
+
+\chapter{Phase 1/2: Conduction Graph Engine}
+
+\section{Graph-Based Conduction Model}
+
+In Phase 1/2, cardiac conduction is modeled as a directed acyclic graph (DAG) with 18 nodes representing anatomical regions:
+
+\begin{tabular}{|l|r|l|}
+\hline
+\textbf{Node} & \textbf{Time (ms)} & \textbf{Anatomical Region} \\
+\hline
+SA\_NODE & 0 & Sinoatrial node \\
+RA & 45 & Right atrium \\
+LA & 90 & Left atrium \\
+AV\_NODE & 115 & AV node \\
+HIS & 135 & His bundle \\
+LBB, RBB & 145 & Bundle branches \\
+SEPT\_EARLY & 155 & Early septum \\
+SEPT\_MID & 165 & Mid septum \\
+RV & 175 & Right ventricle \\
+LV\_ANT & 175 & LV anterior \\
+LV\_LAT & 200 & LV lateral \\
+LV\_INF & 205 & LV inferior \\
+LV\_POST & 215 & LV posterior \\
+\hline
+\end{tabular}
+
+\section{Breadth-First Search Algorithm}
+
+Each heartbeat, a BFS algorithm computes activation times for all nodes:
+
+\begin{enumerate}
+  \item Start with SA\_NODE firing at cycle-length-determined time
+  
+  \item For each activated node $i$ at time $t_i$:
+  \begin{itemize}
+    \item Identify all successor nodes $j$ in the DAG
+    \item Compute candidate activation: $t_j' = t_i +$ conduction delay$_{i \to j}$
+    \item Check refractory: if $t_j' <$ last\_activation$[j]$ + ERP$[j]$, skip (refractory)
+    \item Otherwise, queue $j$ for activation
+  \end{itemize}
+  
+  \item Result: dictionary mapping each node name to its absolute activation time in seconds
+\end{enumerate}
+
+Computational complexity: $O(V + E) \approx O(50)$ operations per beat (extremely fast, $>1000$ Hz).
+
+\section{Hardcoded Refractory Periods}
+
+\begin{tabular}{|l|c|l|}
+\hline
+\textbf{Anatomical Region} & \textbf{ERP (ms)} & \textbf{Physiological Basis} \\
+\hline
+SA node & 100 & Pacemaker tissue \\
+Atrium & 200 & Atrial myocardium \\
+AV node & 300 & Slowest conduction, longest refractory \\
+Ventricle & 250 & Ventricular myocardium \\
+\hline
+\end{tabular}
+
+Nodes arriving during their ERP are blocked (not activated). This prevents re-entrant arrhythmias and implements physiological conduction properties.
+
+\section{12-Lead ECG Computation}
+
+Each activated node contributes a Gaussian dipole in 3-D space:
+
+\begin{equation}
+\mathbf{p}_i(t) = A_d \exp\left(-\frac{(t - t_{\text{act},i})^2}{2\sigma_d^2}\right) + A_r \exp\left(-\frac{(t - t_{\text{repol},i})^2}{2\sigma_r^2}\right)
+\end{equation}
+
+Parameters:
+\begin{itemize}
+  \item $t_{\text{act},i}$ = node activation time from BFS
+  \item $t_{\text{repol},i} = t_{\text{act},i} +$ APD$_i$ (node-specific action potential duration)
+  \item $\sigma_d \approx 12.7$ ms (depolarization Gaussian width)
+  \item $\sigma_r \approx 50$ ms (repolarization Gaussian width)
+  \item $A_d$ = depolarization amplitude (node-specific)
+  \item $A_r \approx -0.3 \times A_d$ (repolarization opposite polarity)
+\end{itemize}
+
+Total cardiac dipole (sum over all active nodes in all active beats):
+$$\mathbf{p}_{\text{tot}}(t) = \sum_{\text{all active nodes}} \mathbf{p}_i(t)$$
+
+The 12-lead ECG voltages are computed via lead-field projection:
+$$V_k(t) = \mathbf{L}_k \cdot \mathbf{p}_{\text{tot}}(t)$$
+
+where $\mathbf{L}_k$ is the unit vector for lead $k$ (I, II, III, aVR, aVL, aVF, V1--V6).
+
+% ============================================================================
+% CHAPTER 4
+% ============================================================================
+
+\chapter{Phase 3: FitzHugh-Nagumo Cable Engine}
+
+\section{The Monodomain Cable Equation}
+
+Phase 3 solves the 1-D monodomain PDE representing wave propagation in cardiac tissue:
+
+\begin{equation}
+\frac{\partial v}{\partial t} = D \frac{\partial^2 v}{\partial x^2} + I_{\text{ion}}(v, w)
+\end{equation}
+
+where $D$ is the diffusion coefficient (related to cell conductivity and geometry).
+
+\section{Numerical Implementation}
+
+\subsection{Spatial Discretization}
+
+The domain is divided into $N$ discrete cells with spacing $\Delta x = 6$ mm.
+
+Laplacian approximation (finite differences):
+$$\frac{\partial^2 v}{\partial x^2}\bigg|_i \approx \frac{v_{i-1} - 2v_i + v_{i+1}}{(\Delta x)^2}$$
+
+No-flux boundary condition at cable ends: $v_0 = v_{-1}$.
+
+\subsection{Temporal Integration}
+
+Explicit Euler scheme with small time steps: $\Delta t_{\text{internal}} = 0.1$ ms (100 micro-steps per 10 ms simulation step).
+
+\subsection{CFL Stability}
+
+For explicit Euler stability in PDE:
+$$\text{CFL} = D \cdot \frac{\Delta t}{(\Delta x)^2} \leq 0.5$$
+
+With current parameters ($D_{\max} = 72$ for Purkinje, $\Delta t = 0.1$ ms):
+$$\text{CFL} = 72 \times \frac{(0.0001)^2}{(0.006)^2} = 0.48 \leq 0.5 \quad \checkmark$$
+
+All cable regions satisfy the CFL condition, ensuring numerical stability.
+
+\section{Cable Architecture}
+
+\subsection{Atrial Cable (8 cells)}
+
+\begin{tabular}{|c|l|c|}
+\hline
+Index & Anatomical Region & Diffusion Coefficient $D$ \\
+\hline
+0 & SA node (pacemaker) & 0.0 \\
+1--4 & Right atrium & 2.88 \\
+5--7 & Left atrium & 2.88 \\
+\hline
+\end{tabular}
+
+The SA node has $D=0$ (isolated pacemaker), meaning no spatial diffusion; it acts as a time-dependent stimulus source. RA and LA have equal diffusion, giving conduction velocity $\approx 0.69$ m/s.
+
+\subsection{Ventricular Cable (10 cells)}
+
+\begin{tabular}{|c|l|c|}
+\hline
+Index & Anatomical Region & Diffusion Coefficient $D$ \\
+\hline
+0 & His bundle (stimulus receiver) & 0.0 \\
+1--3 & Left bundle branch (Purkinje) & 72.0 \\
+4--9 & LV myocardium & 3.0 \\
+\hline
+\end{tabular}
+
+The LBB has $D = 72$, creating high conduction velocity $\approx 3.6$ m/s (fast Purkinje). LV myocardium has $D = 3.0$, giving slower conduction $\approx 0.49$ m/s (working myocardium).
+
+\section{Phase 3-D Calibration}
+
+The FHN time constant $\tau_s$ was calibrated via numerical search to match clinical timing targets:
+
+\begin{tabular}{|c|c|c|c|c|}
+\hline
+$\tau_s$ (ms) & P-wave (ms) & PR (ms) & QRS (ms) & CFL Status \\
+\hline
+25 & 191 & 435 & 210 & ✓ \\
+20 & 104 & 266 & 151 & ✓ \\
+\textbf{15} & \textbf{64} & \textbf{196} & \textbf{111} & \textbf{✓} \\
+13 & — & — & — & ✗ (violated) \\
+\hline
+\end{tabular}
+
+\textbf{Selected}: $\tau_s = 15$ ms
+
+\textbf{Rationale}:
+\begin{itemize}
+  \item P-wave = 64 ms (within clinical 40--100 ms)
+  \item PR = 196 ms (within clinical 120--200 ms)
+  \item QRS = 111 ms (within clinical $<$120 ms)
+  \item CFL stable (0.48 $\leq$ 0.5)
+  \item Recovery time $\tau_w = \tau_s / (b \cdot \varepsilon) \approx 234$ ms allows multi-beat rhythm at 70 bpm
+\end{itemize}
+
+\section{Emergent Refractoriness}
+
+In Phase 3, there are NO hardcoded refractory periods. Instead, refractoriness emerges naturally from FHN dynamics:
+
+\begin{itemize}
+  \item After an action potential, the recovery variable $w$ remains elevated
+  \item While $w > w_{\text{crit}}$, the fast variable $v$ cannot cross threshold (inexcitable)
+  \item This creates a natural refractory period $\approx$ 250 ms
+  \item At faster pacing rates, refractory period shortens slightly (APD restitution property)
+\end{itemize}
+
+\textbf{Advantage}: Automatic refractory period computation; no parameter tuning needed; naturally implements APD restitution and frequency-dependent conduction.
+
+% ============================================================================
+% CHAPTER 5
+% ============================================================================
+
+\chapter{GUI Reference}
+
+\section{Main Window Components}
+
+\begin{itemize}
+  \item \textbf{Toolbar} (top): Start/Stop/Reset buttons, HR spinner (30--220 bpm), engine selector
+  
+  \item \textbf{ECG Display} (center): Scrolling 12-lead ECG with real-time rendering (pyqtgraph)
+  
+  \item \textbf{Parameter Panel} (right dock): 50+ spin-boxes and drop-downs organized into groups
+  
+  \item \textbf{Status Bar} (bottom): Real-time heart rate, simulation time, simulation status
+\end{itemize}
+
+\section{Toolbar Controls}
+
+\subsection{Simulation Buttons}
+
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Button} & \textbf{Function} & \textbf{Keyboard} \\
+\hline
+▶ Start & Begin or resume simulation & Space \\
+■ Stop & Pause simulation & Esc \\
+↺ Reset & Clear display and restore defaults & Ctrl+R \\
+\hline
+\end{tabular}
+
+\subsection{Heart Rate Control}
+
+\begin{itemize}
+  \item \textbf{Type}: Integer spinner box
+  \item \textbf{Range}: 30--220 bpm
+  \item \textbf{Default}: 70 bpm
+  \item \textbf{Formula}: cycle\_length (ms) = 60,000 / HR (bpm)
+  \item \textbf{Effect}: Immediate; determines next SA node firing time
+\end{itemize}
+
+\subsection{Engine Selector}
+
+\begin{itemize}
+  \item \textbf{Option 1}: ``Phase 1/2 -- Conduction Graph'' (BFS-based, all pathologies, $>1000$ Hz)
+  \item \textbf{Option 2}: ``Phase 3 -- FHN Cable'' (cable-based, AV blocks + sinus rates, 2.2× real-time)
+  \item \textbf{Effect}: Runtime engine swap; stops current simulation, restarts if was active
+\end{itemize}
+
+\section{Parameter Groups (50+ Total Parameters)}
+
+\subsection{SA Node}
+\begin{itemize}
+  \item cycle\_length\_ms [300--2000, default 857]
+  \item funny\_current\_amplitude [0.5--2.0, default 1.0]
+  \item autonomic\_tone [-1 to +1, default 0]
+\end{itemize}
+
+\subsection{AV Node}
+\begin{itemize}
+  \item conduction\_delay\_ms [50--300, default 100]
+  \item refractory\_period\_ms [200--500, default 300]
+  \item conductance [0--1, default 1.0]
+\end{itemize}
+
+\subsection{His Bundle}
+\begin{itemize}
+  \item his\_delay\_ms [10--50, default 20]
+  \item left\_branch\_conductance [0--1, default 1.0]
+  \item right\_branch\_conductance [0--1, default 1.0]
+  \item left\_anterior\_conductance [0--1, default 1.0]
+  \item left\_posterior\_conductance [0--1, default 1.0]
+\end{itemize}
+
+\subsection{Ventricle Parameters}
+\begin{itemize}
+  \item conduction\_velocity [0.5--2.0, default 1.0]
+  \item apd\_gradient [0.5--2.0, default 1.0]
+  \item refractory\_period\_ms [150--400, default 250]
+\end{itemize}
+
+\subsection{Atrial Parameters}
+\begin{itemize}
+  \item conduction\_velocity [0.5--2.0, default 1.0]
+  \item refractory\_period\_ms [100--300, default 200]
+  \item heterogeneity [0--1, default 0]
+\end{itemize}
+
+\subsection{Escape Pacemaker}
+\begin{itemize}
+  \item enabled [True/False, default False]
+  \item escape\_interval\_ms [500--3000, default 1500]
+  \item origin [``HIS'', ``LV\_LAT'', default ``LV\_LAT'']
+\end{itemize}
+
+\subsection{Atrial Fibrillation}
+\begin{itemize}
+  \item enabled [True/False, default False]
+  \item atrial\_rate\_hz [4--8, default 5.5]
+  \item mean\_rr\_ms [500--1000, default 700]
+  \item f\_wave\_amplitude\_mv [0.02--0.15, default 0.08]
+\end{itemize}
+
+\subsection{Ectopic Focus}
+\begin{itemize}
+  \item enabled [True/False, default False]
+  \item coupling\_interval\_ms [400--800, default 600]
+  \item repetitive [True/False, default True]
+\end{itemize}
+
+% ============================================================================
+% CHAPTER 6
+% ============================================================================
+
+\chapter{Pathological Patterns}
+
+\section{AV Conduction Blocks}
+
+\subsection{AV Block I°}
+
+\textbf{Description}: PR interval prolonged ($>200$ ms) but all P waves conducted (1:1 conduction).
+
+\textbf{ECG}: Normal P-QRS-T morphology; PR $>200$ ms.
+
+\textbf{Cause}: Slowed AV nodal conduction.
+
+\textbf{Reproduction}: Pathology Panel $\to$ ``AV Block I°''.
+
+\subsection{AV Block II° Mobitz I (Wenckebach)}
+
+\textbf{Description}: Progressive PR lengthening until P wave dropped; then cycle repeats (e.g., 4:3 conduction).
+
+\textbf{ECG}: PR progressively lengthens (160 $\to$ 220 $\to$ 280 ms), then P without QRS, repeat.
+
+\textbf{Reproduction}: Pathology Panel $\to$ ``AV Block II° Mobitz I''.
+
+\subsection{AV Block II° Mobitz II}
+
+\textbf{Description}: Fixed proportion of P waves blocked (e.g., 3:2). PR constant on conducted beats.
+
+\textbf{ECG}: Fixed PR; regular pattern of dropped QRS (no prior PR lengthening).
+
+\textbf{Reproduction}: Pathology Panel $\to$ ``AV Block II° Mobitz II''.
+
+\subsection{AV Block III° (Complete)}
+
+\textbf{Description}: Complete AV block; atrial and ventricular rhythms independent. Ventricles driven by escape pacemaker.
+
+\textbf{ECG}: P waves independent from QRS; P at $\approx 70$ bpm, QRS at $\approx 40$ bpm (escape).
+
+\textbf{Reproduction}: Pathology Panel $\to$ ``AV Block III°''; enable Escape Pacemaker.
+
+\section{Bundle Branch Blocks}
+
+\subsection{Left Bundle Branch Block (LBBB)}
+
+\textbf{Description}: Block of LBB; LV activated retrogradely from RV.
+
+\textbf{ECG}: QRS $>120$ ms (wide); M-shaped in lateral leads; absent septal Q waves; V1 rS pattern.
+
+\textbf{Significance}: Indicates LV disease.
+
+\textbf{Reproduction}: Pathology Panel $\to$ ``LBBB''.
+
+\subsection{Right Bundle Branch Block (RBBB)}
+
+\textbf{Description}: Block of RBB; RV activated from LV.
+
+\textbf{ECG}: QRS $>120$ ms; V1 rSR' (``rabbit ears''); V5/V6 wide S.
+
+\textbf{Reproduction}: Pathology Panel $\to$ ``RBBB''.
+
+\subsection{Left Anterior Hemiblock (LAHB)}
+
+\textbf{Description}: Block of anterior fascicle of LBB.
+
+\textbf{ECG}: QRS $\approx 100$ ms; left-axis deviation.
+
+\textbf{Reproduction}: Pathology Panel $\to$ ``LAHB''.
+
+\subsection{Left Posterior Hemiblock (LPHB)}
+
+\textbf{Description}: Block of posterior fascicle of LBB.
+
+\textbf{ECG}: QRS $\approx 80$ ms; right-axis deviation ($>+110°$).
+
+\textbf{Reproduction}: Pathology Panel $\to$ ``LPHB''.
+
+\section{Arrhythmias}
+
+\subsection{Atrial Fibrillation (AF)}
+
+\textbf{Description}: Chaotic atrial activation (300--600 bpm); ventricular response irregular.
+
+\textbf{ECG}: No P waves; fine fibrillation waves (f-waves) on baseline; irregular narrow QRS.
+
+\textbf{Reproduction}: Parameter Panel $\to$ Atrial Fibrillation: enabled = True; atrial\_rate\_hz = 5.5.
+
+\subsection{Sinus Bradycardia}
+
+\textbf{Description}: HR $<60$ bpm.
+
+\textbf{Reproduction}: Toolbar HR $\to$ 40 bpm.
+
+\subsection{Sinus Tachycardia}
+
+\textbf{Description}: HR $>100$ bpm.
+
+\textbf{Reproduction}: Toolbar HR $\to$ 150 bpm.
+
+\subsection{Premature Ventricular Contraction (PVC)}
+
+\textbf{Description}: Early ectopic beat from ventricle; wide QRS, different morphology.
+
+\textbf{Reproduction}: Parameter Panel $\to$ Ectopic Focus: enabled = True; coupling\_interval = 600 ms; repetitive = True.
+
+% ============================================================================
+% CHAPTER 7
+% ============================================================================
+
+\chapter{Architecture \& Implementation}
+
+\section{Module Organization}
+
+\textbf{Core Physics} (800 lines):
+\begin{itemize}
+  \item fitzhugh\_nagumo.py (150 lines): FHN cell model
+  \item cable\_1d.py (500 lines): 1-D monodomain cable
+  \item lead\_field.py (150 lines): 12-lead forward model
+\end{itemize}
+
+\textbf{Conduction} (350 lines):
+\begin{itemize}
+  \item graph.py: DAG and BFS algorithm
+\end{itemize}
+
+\textbf{Simulation Engines} (850 lines):
+\begin{itemize}
+  \item graph\_engine.py (400 lines): Phase 1/2 BFS engine
+  \item cable\_engine.py (450 lines): Phase 3 FHN cable engine
+\end{itemize}
+
+\textbf{GUI} (450 lines):
+\begin{itemize}
+  \item main\_window.py (250 lines)
+  \item parameter\_panel.py (200 lines)
+\end{itemize}
+
+\textbf{Pathologies} (550 lines):
+\begin{itemize}
+  \item av\_blocks.py, bundle\_blocks.py, atrial.py, ventricular.py, sinus\_rhythms.py, etc.
+\end{itemize}
+
+\textbf{Total}: $>3500$ lines of production Python code.
+
+\section{Class Hierarchy}
+
+Core abstract classes:
+
+\begin{itemize}
+  \item \textbf{AbstractCellModel}: Cell model interface
+    \begin{itemize}
+      \item FitzHughNagumoCell (Phase 3)
+      \item AlievPanfilovCell (future)
+    \end{itemize}
+
+  \item \textbf{SimulationEngine}: Simulation controller
+    \begin{itemize}
+      \item ConductionGraphEngine (Phase 1/2)
+      \item ConductionCableEngine (Phase 3)
+    \end{itemize}
+
+  \item \textbf{AbstractPathologyPlugin}: Pathology interface
+    \begin{itemize}
+      \item Static plugins (LBBB, RBBB, AV blocks)
+      \item Stateful plugins (AF, HRV, escape pacemaker)
+    \end{itemize}
+\end{itemize}
+
+% ============================================================================
+% CHAPTER 8
+% ============================================================================
+
+\chapter{Technical Reference}
+
+\section{Numerical Validation}
+
+\subsection{CFL Stability}
+
+\begin{tabular}{|l|c|c|c|c|}
+\hline
+Region & $D$ & $\Delta t$ & $\tau_s$ & CFL \\
+\hline
+Atrium & 2.88 & 0.1 ms & 15 ms & 0.192 \\
+Purkinje & 72.0 & 0.1 ms & 15 ms & 0.48 \\
+LV & 3.0 & 0.1 ms & 15 ms & 0.02 \\
+\hline
+\end{tabularx}
+
+All $\leq 0.5$ $\Rightarrow$ stable.
+
+\subsection{Performance}
+
+\begin{tabular}{|l|c|l|}
+\hline
+Engine & Speed & Notes \\
+\hline
+Phase 1/2 & $>1000$ Hz & Fast BFS \\
+Phase 3 & 2.2$\times$ real-time & NumPy vectorized \\
+\hline
+\end{tabularx}
+
+\section{Installation}
+
+Requirements:
+\begin{itemize}
+  \item Python 3.10+
+  \item NumPy $\geq 2.0$
+  \item PyQt6 $\geq 6.0$
+  \item pyqtgraph
+\end{itemize}
+
+Setup:
+\begin{verbatim}
+python3 -m venv .venv
+source .venv/bin/activate
+pip install numpy PyQt6 pyqtgraph
+python main.py
+\end{verbatim}
+
+\section{Glossary}
+
+\begin{tabular}{|l|X|}
+\hline
+AP & Action potential \\
+APD & Action potential duration \\
+AV & Atrioventricular \\
+BBB & Bundle branch block \\
+ECG & Electrocardiogram (12-lead) \\
+ERP & Effective refractory period \\
+FHN & FitzHugh-Nagumo model \\
+HR & Heart rate (bpm) \\
+LV & Left ventricle \\
+PVC & Premature ventricular contraction \\
+QRS & Ventricular depolarization \\
+RV & Right ventricle \\
+SA & Sinoatrial \\
+\hline
+\end{tabular}
+
+\section{References}
+
+1. FitzHugh R. Impulses and physiological states in theoretical models of nerve membrane. \textit{Biophys J}. 1961;1:445--466.
+
+2. Nagumo J, et al. An active pulse transmission line simulating nerve axon. \textit{Proc IRE}. 1962;50:2061--2070.
+
+3. Keener JP, Sneyd J. \textit{Mathematical Physiology}. Springer; 1998.
+
+4. Klabunde RE. \textit{Cardiovascular Physiology Concepts}. Lippincott Williams \& Wilkins; 2011.
+
+\end{document}

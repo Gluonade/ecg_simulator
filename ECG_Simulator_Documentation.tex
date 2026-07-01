@@ -1,0 +1,312 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[margin=2cm]{geometry}
+\usepackage{amsmath}
+
+\title{ECG Simulator - Complete Technical Documentation}
+\author{Enrico Caruso}
+\date{\today}
+
+\pagestyle{empty}
+
+\begin{document}
+
+\section*{ECG Simulator - Comprehensive Documentation}
+
+\subsection*{Executive Summary}
+
+The ECG Simulator is a Python-based biomedical simulation framework modeling cardiac electrophysiology and generating realistic 12-lead electrocardiograms.
+
+Two computational engines are implemented:
+\begin{itemize}
+\item \textbf{Phase 1/2}: Discrete conduction graph with BFS propagation (microseconds per step, extremely fast)
+\item \textbf{Phase 3}: FitzHugh-Nagumo (FHN) 1D cable model with emergent refractory (2.2x real-time, physiologically faithful)
+\end{itemize}
+
+\section*{Mathematical Models}
+
+\subsection*{Cardiac Action Potential}
+
+Every myocyte exhibits an action potential (AP) with five phases:
+
+\begin{enumerate}
+\item Phase 0: Rapid depolarization (-90 mV to +30 mV) via inward Na+ current
+\item Phase 1: Early repolarization via outward K+ current  
+\item Phase 2: Plateau (100-300 ms): inward Ca2+ balances outward K+
+\item Phase 3: Late repolarization via dominant outward K+
+\item Phase 4: Resting diastolic potential at -90 mV
+\end{enumerate}
+
+\subsection*{Conduction and Refractoriness}
+
+Electrical activation propagates via gap junctions between cells at characteristic velocities:
+\begin{itemize}
+\item Atrial myocardium: 0.5-1.0 m/s
+\item His-Purkinje system: 2-4 m/s (fastest)
+\item Ventricular myocardium: 0.3-0.5 m/s
+\item AV node: 0.02-0.05 m/s (slowest)
+\end{itemize}
+
+During and after the AP, the cell is refractory (cannot re-excite). The absolute refractory period (during phases 0-2) prevents premature activation. Refractory period duration correlates with AP duration (APD).
+
+\subsection*{ECG and Dipole Theory}
+
+The 12-lead ECG measures the projection of the cardiac electrical dipole onto fixed spatial lead vectors. Each anatomical region (SA node, RA, LA, AV node, bundle branches, ventricles) contributes a time-localized dipole:
+
+$$\mathbf{p}_{\text{node}}(t) = \mathbf{d}_{\text{node}} \left[ g_{\text{depol}}(t-t_{\text{act}}) + A_{\text{repol}} \, g_{\text{repol}}(t-t_{\text{act}}) \right]$$
+
+where:
+\begin{itemize}
+\item $\mathbf{d}_{\text{node}}$ = dipole vector (anatomy-specific)
+\item $t_{\text{act}}$ = activation time
+\item $g_{\text{depol}}, g_{\text{repol}}$ = Gaussian functions (QRS and T-wave)
+\item Depolarization duration $\sigma_d \approx 12.7$ ms
+\item Repolarization peaks at $\approx 280$ ms post-activation
+\end{itemize}
+
+The total ECG voltage in lead $k$ is the sum over all nodes:
+$$\text{ECG}_k(t) = \sum_{\text{nodes}} \mathbf{L}_k \cdot \mathbf{p}_{\text{node}}(t)$$
+
+\section*{Phase 3: FitzHugh-Nagumo Cable Model}
+
+\subsection*{Mathematical Formulation}
+
+The 1D monodomain FHN equations are:
+
+$$\frac{\partial v}{\partial t} = \frac{D}{\tau} \frac{\partial^2 v}{\partial x^2} + \frac{1}{\tau} \left( v - \frac{v^3}{3} - w + I_{\text{ext}} \right)$$
+
+$$\frac{\partial w}{\partial t} = \frac{\varepsilon}{\tau} \left( v + a - b \cdot w \right)$$
+
+where:
+\begin{itemize}
+\item $v(x,t)$ = transmembrane voltage (normalized: $-1.2 \le v \le 2$)
+\item $w(x,t)$ = slow recovery variable
+\item $D$ = diffusion coefficient (cell-to-cell coupling)
+\item $\tau$ = time scale (15 ms in Phase 3-D calibration)
+\item $\varepsilon$ = recovery rate (0.08)
+\item $a = 0.7, b = 0.8$ = FHN model parameters
+\item $I_{\text{ext}}$ = external stimulus
+\end{itemize}
+
+\subsection*{Fast-Slow Dynamics}
+
+The key insight: $v$ evolves on the fast timescale $\sim \tau$, while $w$ evolves on the slow timescale $\sim \tau/\varepsilon$.
+
+\begin{itemize}
+\item \textbf{Depolarization}: $v$ rapidly increases as depolarizing current dominates
+\item \textbf{Plateau}: $v$ remains high; $w$ slowly increases, gradually opposing depolarization
+\item \textbf{Repolarization}: When $w$ is large enough, it repolarizes $v$
+\item \textbf{Refractoriness}: $w$ remains large, suppressing $v$. As $w$ decays, $v$ can respond again
+\end{itemize}
+
+The AP duration (APD) is determined by recovery dynamics:
+$$\text{APD} \sim \frac{\tau}{\varepsilon \cdot b} = \frac{15 \text{ ms}}{0.08 \times 0.8} \approx 234 \text{ ms}$$
+
+This natural recovery time generates multi-beat rhythms without explicit programming.
+
+\subsection*{Cable Structure}
+
+Atrial cable: 8 cells
+\begin{itemize}
+\item Cell 0: SA node (pacemaker, point source with $D=0$)
+\item Cells 1-7: RA and LA myocardium
+\item Diffusion: $D_{\text{atr}} = 2.88$
+\end{itemize}
+
+Ventricular cable: 10 cells
+\begin{itemize}
+\item Cell 0: His bundle (point source, $D=0$)
+\item Cells 1-3: Left bundle branch (fast, $D=72$)
+\item Cells 4-9: LV myocardium (slower, $D=3$)
+\end{itemize}
+
+\subsection*{Numerical Integration}
+
+Discretized using finite differences with explicit Euler integration. The CFL (Courant-Friedrichs-Lewy) stability condition requires:
+
+$$D \cdot \frac{\Delta t}{\tau \Delta x^2} \le 0.5$$
+
+Current values with $\Delta t = 0.1$ ms, $\tau = 15$ ms, $\Delta x = 1$:
+$$\text{CFL}_{\text{ven}} = 72 \times \frac{0.0001}{0.015 \times 1} = 0.48 < 0.5 \quad \checkmark$$
+
+\section*{Python Implementation}
+
+\subsection*{Core Modules}
+
+File: \texttt{cardiac\_sim/core/tissue/cable\_1d.py} (500 lines)
+\begin{itemize}
+\item Class: \texttt{ConductionCable1D(params)}
+\item State: atrial voltage/recovery arrays, ventricular arrays
+\item Key methods:
+\begin{itemize}
+\item \texttt{new\_beat(sa\_fire\_time, params)}: Reset for new beat
+\item \texttt{advance(dt)}: Integrate by dt seconds
+\item \texttt{\_step\_atrial(dt), \_step\_ventricular(dt)}: FHN Euler steps
+\end{itemize}
+\item Integration: \texttt{\_fhn\_cable\_step(V, W, D, I, dt, ...)} with optional Numba JIT
+\end{itemize}
+
+File: \texttt{cardiac\_sim/simulation/cable\_engine.py} (450 lines)
+\begin{itemize}
+\item Class: \texttt{ConductionCableEngine(SimulationEngine)}
+\item Manages beat lifecycle, node activation tracking, ECG computation
+\item Key methods:
+\begin{itemize}
+\item \texttt{initialize(params)}: Create cable and node dictionary
+\item \texttt{step(dt)}: Main loop - advance cable, collect activations, compute ECG
+\item \texttt{\_fire\_sa()}: Initiate new beat
+\item \texttt{\_compute\_ecg(t)}: Sum Gaussian dipoles from active beats
+\end{itemize}
+\end{itemize}
+
+\subsection*{GUI Components}
+
+File: \texttt{cardiac\_sim/gui/main\_window.py} (250 lines)
+\begin{itemize}
+\item Main application window with three regions:
+\begin{itemize}
+\item Toolbar: Run/Pause, Reset, Engine selector, HR display
+\item Left sidebar: Parameter panel, Pathology panel
+\item Central area: 12-lead ECG real-time display (pyqtgraph)
+\end{itemize}
+\end{itemize}
+
+File: \texttt{cardiac\_sim/core/parameter\_model.py} (200 lines)
+\begin{itemize}
+\item Complete parameter hierarchy as dataclasses
+\item Validation ranges
+\item Default physiological values
+\end{itemize}
+
+\section*{Parameters and Ranges}
+
+All major parameters with physiological meaning:
+
+\begin{verbatim}
+SA Node:
+  - Cycle Length (ms): 300-2000 [default: 857 → 70 bpm]
+  - Ectopic Trigger Rate (bpm): 0-200
+
+AV Node:
+  - AV Delay (ms): 50-300 [default: 100]
+  - AV Conductance: 0-1 [0=block, 1=normal]
+  - AV Refractory Period (ms): 200-400
+
+Ventricular:
+  - RBB/LBB Conductance: 0-1 [blocks implemented]
+  - Septal Conductance: 0-1
+  - Ventricular Refractory (ms): 200-350
+
+Phase 3 Model:
+  - Cable Time Scale tau (ms): 5-30 [default: 15]
+  - Atrial Diffusion: 0.5-10 [default: 2.88]
+  - Ventricular Diffusion (LBB): 50-150 [default: 72]
+  - Ventricular Diffusion (LV): 1-20 [default: 3]
+\end{verbatim}
+
+\section*{Pathological ECG Patterns}
+
+Available pathologies reproducible via the simulator:
+
+\subsection*{AV Conduction Blocks}
+
+\begin{itemize}
+\item \textbf{1° AV Block}: AV delay increased. PR >200 ms, all P followed by QRS.
+  Reproduction: Parameters → AV Node → AV Delay = 150 ms
+
+\item \textbf{3° AV Block}: AV conductance = 0. Atrial and ventricular rhythms completely independent.
+  Reproduction: Parameters → AV Node → AV Conductance = 0
+
+\end{itemize}
+
+\subsection*{Bundle Branch Blocks}
+
+\begin{itemize}
+\item \textbf{RBBB}: RBB conductance = 0. RV activation delayed. 
+  QRS >120 ms, terminal R' in V1.
+  Reproduction: Parameters → Ventricular → RBB Conductance = 0
+
+\item \textbf{LBBB}: LBB conductance = 0. LV activation delayed.
+  QRS >120 ms, broad R in lateral leads.
+  Reproduction: Parameters → Ventricular → LBB Conductance = 0
+
+\end{itemize}
+
+\subsection*{Atrial Arrhythmias}
+
+\begin{itemize}
+\item \textbf{Atrial Fibrillation}: No P waves, erratic baseline, irregularly irregular QRS rhythm
+\item \textbf{Sinus Bradycardia}: All intervals normal, just slower rate (e.g., 50 bpm)
+\item \textbf{Sinus Tachycardia}: All intervals normal, faster rate (e.g., 140 bpm)
+\end{itemize}
+
+\subsection*{Ventricular Arrhythmias}
+
+\begin{itemize}
+\item \textbf{PVC}: Wide abnormal QRS; opposite T wave; compensatory pause
+\item \textbf{Ventricular Fibrillation}: Chaotic baseline, no organized QRS
+\end{itemize}
+
+\section*{Phase 3-D Validation Results}
+
+Normal sinus rhythm at 70 bpm:
+
+\begin{tabular}{|l|r|r|}
+\hline
+Interval & Simulator & Clinical Target \\
+\hline
+P wave & 64 ms & 40-100 ms ✓ \\
+PR interval & 196 ms & 120-200 ms ✓ \\
+QRS duration & 70 ms & <120 ms ✓ \\
+QT interval & 360 ms & 300-440 ms ✓ \\
+HR & 70 bpm & 60-100 bpm ✓ \\
+\hline
+\end{tabular}
+
+ECG morphology:
+\begin{itemize}
+\item QRS peak-to-trough: 1.3 mV (clinical: 0.5-2.5 mV) ✓
+\item T wave: 0.6 mV 
+\item QRS/T ratio: 2.2 (clinical normal: 1-2.5) ✓
+\item 6 consecutive beats at 70 bpm over 5 seconds ✓
+\end{itemize}
+
+\section*{Installation and Usage}
+
+Prerequisites: Python 3.12+, PyQt6, NumPy, pyqtgraph
+
+\begin{verbatim}
+git clone <repo>
+cd ECG_simulator
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python main.py
+\end{verbatim}
+
+\section*{File Organization}
+
+Total: $\approx$ 3500 lines of code across 19 Python modules:
+
+\begin{verbatim}
+cardiac_sim/core/tissue/cable_1d.py          : 500 lines (FHN cable)
+cardiac_sim/simulation/cable_engine.py       : 450 lines (Phase 3 engine)
+cardiac_sim/gui/main_window.py               : 250 lines (GUI)
+cardiac_sim/core/parameter_model.py          : 200 lines (Parameters)
+cardiac_sim/simulation/graph_engine.py       : 400 lines (Phase 1/2 engine)
+cardiac_sim/core/conduction/graph.py         : 150 lines (Graph structure)
+cardiac_sim/gui/ecg_display.py               : 200 lines (ECG plotter)
+cardiac_sim/core/cell_models/fitzhugh_nagumo.py : 100 lines
+cardiac_sim/core/ecg/lead_field.py           : 120 lines
+cardiac_sim/plugins/*.py                     : 400 lines (Pathologies)
+[Others]                                     : 635 lines
+\end{verbatim}
+
+\section*{Key References}
+
+FitzHugh, R. (1961). Impulses and physiological states in theoretical models of nerve membrane. Biophys. J., 1(6), 445-466.
+
+Keener, J. P., \& Sneyd, J. (2009). Mathematical Physiology: I. Cellular Physiology (2nd ed.). Springer.
+
+Roth, B. J. (1997). Electrical conductivity values used with the bidomain model of cardiac tissue. IEEE Trans. Biomed. Eng., 44(4), 326-338.
+
+\end{document}

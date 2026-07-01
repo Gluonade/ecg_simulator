@@ -1,0 +1,349 @@
+\documentclass[11pt, a4paper]{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage[margin=1in]{geometry}
+\usepackage{fancyhdr}
+\usepackage{booktabs}
+\usepackage{tabularx}
+
+\lstset{basicstyle=\ttfamily\small, breaklines=true, language=Python}
+
+\title{ECG Simulator Documentation\\Part 8: Advanced Reference \& Future Roadmap}
+\author{Extended Features, Phase 4+ Planning, Troubleshooting}
+\date{June 2026}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Part 8: Advanced Reference}
+\lhead{ECG Simulator}
+\cfoot{\thepage}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Troubleshooting Guide}
+
+\subsection{Flat QRS (No Visible QRS Complex)}
+
+\subsubsection{Symptoms}
+\begin{itemize}
+    \item ECG shows flat or minimal voltage during QRS interval
+    \item P waves visible (normal)
+    \item T waves visible (normal)
+    \item Only QRS appears depressed or absent
+\end{itemize}
+
+\subsubsection{Root Causes}
+\begin{enumerate}
+    \item \textbf{Depol Gaussian decay}: QRS Gaussian has small $\sigma_d$ (default 12.7 ms)
+        \begin{itemize}
+            \item Solution: Increase depol\_duration to 40 ms for Phase 3 (LV overlap)
+        \end{itemize}
+    
+    \item \textbf{Amplitude scaling too low}: amplitude\_scale < 1.0
+        \begin{itemize}
+            \item Solution: Set amplitude\_scale = 1.0 or higher
+        \end{itemize}
+    
+    \item \textbf{Engine selection wrong}: Using Phase 1/2 with Phase 3 parameters
+        \begin{itemize}
+            \item Solution: Ensure engine selector matches code logic
+        \end{itemize}
+\end{enumerate}
+
+\subsubsection{Resolution Steps}
+\begin{enumerate}
+    \item Check GUI amplitude\_scale slider (should be ~1.0)
+    \item Verify Engine = "graph" (Phase 1/2) or "cable" (Phase 3)
+    \item For Phase 3: Ensure depol\_duration parameter = 40 ms
+    \item Click Reset button to clear old traces
+    \item Click Start to generate new beat
+\end{enumerate}
+
+\subsection{No ECG Signal Generated}
+
+\subsubsection{Symptoms}
+\begin{itemize}
+    \item Click Start button; no ECG trace appears
+    \item Console shows no errors
+    \item Display remains blank
+\end{itemize}
+
+\subsubsection{Root Causes}
+\begin{enumerate}
+    \item \textbf{Timer not running}: GUI timer not started
+    \item \textbf{Parameters invalid}: Infinite or negative values
+    \item \textbf{Engine disconnected}: Engine not properly initialized
+\end{enumerate}
+
+\subsubsection{Resolution}
+\begin{enumerate}
+    \item Check console output (enable debug\_mode = true)
+    \item Verify HR is between 30--220 bpm
+    \item Verify all conductances are 0.0--1.0
+    \item Reset GUI: Click Reset button
+    \item Try different engine (graph vs cable)
+\end{enumerate}
+
+\subsection{Irregular Rhythm When Expecting Regular}
+
+\subsubsection{Causes}
+\begin{enumerate}
+    \item \textbf{AF enabled}: af\_enabled = true
+        \begin{itemize}
+            \item Solution: Set af\_enabled = false
+        \end{itemize}
+    
+    \item \textbf{Ectopic focus active}: ectopic\_enabled = true
+        \begin{itemize}
+            \item Solution: Set ectopic\_enabled = false
+        \end{itemize}
+    
+    \item \textbf{Escape pacemaker interfering}: escape\_enabled = true
+        \begin{itemize}
+            \item Solution: Ensure AV conductance = 1.0 so escapes don't fire
+        \end{itemize}
+\end{enumerate}
+
+\section{Advanced Parameter Tuning}
+
+\subsection{Matching Patient-Specific ECG Patterns}
+
+To simulate a patient's ECG with specific morphology:
+
+\begin{enumerate}
+    \item \textbf{Measure patient ECG}:
+    \begin{itemize}
+        \item HR, PR, QRS, QT intervals
+        \item QRS axis, QRS amplitude
+        \item Presence of pathology (bundle block, ischemia, etc.)
+    \end{itemize}
+    
+    \item \textbf{Adjust simulator parameters}:
+    \begin{itemize}
+        \item Set HR to patient HR
+        \item Prolonged PR → increase av\_delay
+        \item Broad QRS → reduce lbb\_conductance or rbb\_conductance
+        \item Left axis deviation → enable LAHB (set lahb\_conductance → 0)
+        \item Right axis deviation → enable LPHB (set lphb\_conductance → 0)
+    \end{itemize}
+    
+    \item \textbf{Adjust timing constants} (Phase 3):
+    \begin{itemize}
+        \item Modify $\tau_s$ in cable\_1d.py to match patient's conduction times
+        \item Re-run numerical search for phase calibration
+    \end{itemize}
+    
+    \item \textbf{Validate against patient ECG}
+    \begin{itemize}
+        \item Compare intervals and amplitudes
+        \item Iterate parameter adjustments
+    \end{itemize}
+\end{enumerate}
+
+\section{Phase 4 Development Plan}
+
+\subsection{Phase 4a: 3-D Ventricular Tissue (Q2 2027)}
+
+\subsubsection{Objectives}
+\begin{itemize}
+    \item Extend Phase 3 cable model to 2-D ventricular sheet
+    \item Implement orthotropic diffusion (longitudinal > transverse CV)
+    \item Model 3-D dipole orientation changes during repolarization
+\end{itemize}
+
+\subsubsection{Technical Changes}
+\begin{itemize}
+    \item Replace 1-D Laplacian with 2-D: $\nabla^2 v = \frac{\partial^2 v}{\partial x^2} + \frac{\partial^2 v}{\partial y^2}$
+    \item Introduce diffusion tensors: $D_L > D_T$ (anisotropy)
+    \item Update CFL condition for 2-D: $\text{CFL} = D_{\max} \Delta t / \min((\Delta x)^2, (\Delta y)^2)$
+\end{itemize}
+
+\subsubsection{Expected Outcomes}
+\begin{itemize}
+    \item Improved QRS morphology (especially V1--V3 precordial leads)
+    \item Realistic T-wave vector changes
+    \item Ability to simulate infarct patterns (regional conduction delay)
+\end{itemize}
+
+\subsection{Phase 4b: Full Conduction System (Q3 2027)}
+
+\subsubsection{Objectives}
+\begin{itemize}
+    \item Upgrade Phase 3 cable to full 3-D geometry
+    \item Include:
+    \begin{itemize}
+        \item SA node (pacemaker dynamics)
+        \item Complete atrial geometry
+        \item AV node (two-dimensional with slow-fast regions)
+        \item His bundle and bundle branches
+        \item Complete LV and RV
+    \end{itemize}
+\end{itemize}
+
+\subsubsection{New Parameters}
+\begin{itemize}
+    \item Fast-pathway conductance (AV node)
+    \item Slow-pathway conductance (dual AV node pathways)
+    \item Accessory pathway (Wolff--Parkinson--White syndrome)
+\end{itemize}
+
+\subsection{Phase 5: Advanced Cell Models (Q4 2027)}
+
+\subsubsection{Courtemanche Model (Atrial)}
+\begin{itemize}
+    \item 21-variable state vector (vs 2 for FHN)
+    \item Detailed ion channels: $I_{Na}$, $I_K$, $I_{Ca}$, $I_{K1}$, ...
+    \item APD typically 100--150 ms (clinically accurate)
+    \item Will enable: AF dynamics, APD alternans
+\end{itemize}
+
+\subsubsection{ten Tusscher Model (Ventricular)}
+\begin{itemize}
+    \item 19-variable state vector
+    \item Epicardial, midmyocardial, endocardial variants
+    \item APD typically 200--300 ms
+    \item Will enable: Transmural dispersion, long QT syndrome
+\end{itemize}
+
+\subsection{Phase 6: Boundary-Element Forward Model (2028)}
+
+\subsubsection{Replace Single-Dipole with BE Torso Model}
+\begin{itemize}
+    \item Construct 3-D torso geometry (from CT/MRI templates)
+    \item Compute BEM gain matrix (heart → surface electrodes)
+    \item Project 3-D ventricular dipoles to 12 standard + additional leads
+\end{itemize}
+
+\subsubsection{Expected Improvements}
+\begin{itemize}
+    \item Realistic lead vectors (St.--axis angles match clinical)
+    \item Ability to model unusual electrode placements
+    \item ST-segment morphology improvements
+\end{itemize}
+
+\subsection{Phase 7: Autonomic Nervous System (2028)}
+
+\subsubsection{Sympathetic/Parasympathetic Modulation}
+\begin{itemize}
+    \item Model beta-adrenergic effects: increased HR, faster AV conduction
+    \item Model parasympathetic effects: decreased HR, AV block risk
+    \item Parameters: \textbf{sympathetic\_tone}, \textbf{parasympathetic\_tone}
+    \item Realistic response to exercise, stress, sleep
+\end{itemize}
+
+\subsubsection{Pharmacological Model}
+\begin{itemize}
+    \item Beta-blockers: Reduce HR, prolong PR
+    \item Calcium channel blockers: AV nodal delay
+    \item Antiarrhythmics: Class I (Na channel), Class II (beta), Class III (K channel)
+    \item Simulate drug effects on conduction and refractoriness
+\end{itemize}
+
+\section{Extending the Code}
+
+\subsection{Adding a Custom Pathology Plugin}
+
+\subsubsection{Step 1: Create Plugin Class}
+\begin{lstlisting}
+from plugins.base import PluginBase
+
+class MyCustomArrhythmia(PluginBase):
+    name = "MyCustomArrhythmia"
+    description = "My custom ECG pattern"
+    
+    def __init__(self, params):
+        self.params = params
+        self.enabled = False
+    
+    def apply(self, activation_times, conductances):
+        if not self.enabled:
+            return activation_times, conductances
+        
+        # Modify activation times or conductances here
+        # Example: block AV node
+        conductances['av'] *= 0.5
+        
+        return activation_times, conductances
+\end{lstlisting}
+
+\subsubsection{Step 2: Register Plugin}
+\begin{lstlisting}
+# In main.py or plugin manager
+from plugins.my_custom import MyCustomArrhythmia
+
+engine.register_plugin(MyCustomArrhythmia(params))
+\end{lstlisting}
+
+\subsubsection{Step 3: Add GUI Controls}
+\begin{enumerate}
+    \item Add group box to parameter panel
+    \item Add enable/disable checkbox
+    \item Add parameter sliders (e.g., severity, timing)
+    \item Connect to plugin.apply() method
+\end{enumerate}
+
+\subsection{Modifying Conduction Geometry}
+
+To change the anatomical connectivity (DAG in Phase 1/2):
+
+\begin{enumerate}
+    \item Edit cardiac\_sim/core/tissue/graph.py
+    \item Modify adjacency matrix or edge list
+    \item Update conduction delays (path\_delay dict)
+    \item Test with BFS algorithm
+\end{enumerate}
+
+\subsection{Adding New ECG Leads}
+
+\begin{enumerate}
+    \item Define new unit vector in cardiac coordinates
+    \item Add to LEAD\_MATRIX in lead\_field.py
+    \item Update lead names list
+    \item GUI automatically displays new lead
+\end{enumerate}
+
+\section{Known Limitations}
+
+\begin{enumerate}
+    \item \textbf{Single-dipole ECG model}: Limited accuracy for far-field effects
+    \item \textbf{No T-wave alternans}: Current model lacks beat-to-beat APD variation
+    \item \textbf{No ischemia simulation}: No regional metabolic effects on conduction
+    \item \textbf{Simplified atrial geometry}: 8-cell cable vs realistic 3-D atria
+    \item \textbf{No autonomic integration}: No HR variability from breathing, stress
+    \item \textbf{FHN cell model}: APD ~540 ms (longer than clinical 200--300 ms for ventricle)
+\end{enumerate}
+
+\section{Quick Reference: Parameter Summary}
+
+\begin{tabularx}{\textwidth}{|l|c|c|}
+\hline
+\textbf{Parameter} & \textbf{Range} & \textbf{Default} \\
+\hline
+HR (bpm) & 30--220 & 70 \\
+cycle\_length (s) & 0.27--2.0 & 0.857 \\
+av\_delay (s) & 0.05--0.30 & 0.15 \\
+av\_conductance & 0.0--1.0 & 1.0 \\
+vent\_abs\_refr (s) & 0.25--0.45 & 0.35 \\
+amplitude\_scale & 0.1--5.0 & 1.0 \\
+\hline
+\end{tabularx}
+
+\section{Contact \& Support}
+
+For bug reports, feature requests, or documentation clarifications:
+
+\begin{itemize}
+    \item \textbf{Repository}: [GitHub URL to ECG simulator]
+    \item \textbf{Documentation}: See Part 1--7 for comprehensive reference
+    \item \textbf{Issues}: File issue on GitHub with reproducible steps
+    \item \textbf{Discussion}: Review Phase 4+ planning in this Part 8
+\end{itemize}
+
+\end{document}

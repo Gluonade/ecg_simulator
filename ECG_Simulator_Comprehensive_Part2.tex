@@ -1,0 +1,514 @@
+% ============================================================================
+% CHAPTER 4: PHASE 3 — 1-D MONODOMAIN CABLE WITH FITZHUGH-NAGUMO DYNAMICS
+% ============================================================================
+
+\chapter{Phase 3: 1-D Monodomain FHN Cable Engine}
+
+Phase 3 replaces the discrete graph with an actual 1-D tissue model that solves the cable equation on cardiac cells. This produces emergent refractory periods and wave-based ECG morphology.
+
+\section{4.1 The Cable Equation — Physical Foundations}
+
+\subsection{4.1.1 Derivation from First Principles}
+
+Consider a 1-D cable of cardiac tissue (a "strand" of cells joined end-to-end). The electrical potential $V(x, t)$ at position $x$ and time $t$ obeys the monodomain equation:
+
+\begin{equation}
+\frac{\partial V}{\partial t} = \frac{1}{R_m} \left( \frac{1}{\rho} \frac{\partial^2 V}{\partial x^2} - I_{\text{ion}} \right)
+\label{eq:monodomain}
+\end{equation}
+
+where:
+- $V$ = membrane potential difference [mV]
+- $\rho$ = resistivity of intracellular space [\(\Omega\) cm]
+- $R_m$ = membrane resistance [\(\Omega\) cm²]
+- $I_{\text{ion}}$ = transmembrane ionic current density [\(\mu\)A/cm²]
+
+The spatial diffusion term $\frac{1}{\rho} \frac{\partial^2 V}{\partial x^2}$ represents current flow along the cable due to voltage gradients. The ionic term $I_{\text{ion}}$ represents current crossing the membrane (both inward — depolarizing — and outward — repolarizing).
+
+\textbf{Simplified form}: Define the diffusion coefficient as:
+
+\begin{equation}
+D = \frac{1}{2 \rho R_m}
+\end{equation}
+
+Then:
+
+\begin{equation}
+\frac{\partial V}{\partial t} = D \frac{\partial^2 V}{\partial x^2} + \frac{1}{R_m} I_{\text{ion}}(V, w, t)
+\label{eq:monodomain_simplified}
+\end{equation}
+
+When ionic current is represented by FHN fast/slow dynamics ($v, w$), this becomes a coupled 3-variable PDE system.
+
+\subsection{4.1.2 Numerical Discretization — Finite Differences}
+
+We discretize space into $N$ cells at positions $x_i = i \cdot \Delta x$, with spacing $\Delta x = 6$ mm (typical ventricular myocyte length).
+
+\textbf{Membrane potential}: $V(x_i, t) \approx V_i(t)$ (value at cell $i$).
+
+\textbf{Laplacian (finite difference)}: The spatial second derivative at cell $i$ is approximated:
+
+\begin{equation}
+\frac{\partial^2 V}{\partial x^2}\bigg|_{x_i} \approx \frac{V_{i-1} - 2V_i + V_{i+1}}{(\Delta x)^2}
+\label{eq:laplacian_fd}
+\end{equation}
+
+For boundary conditions (end cells), we impose \emph{no-flux} (Neumann):
+
+\begin{equation}
+\frac{\partial V}{\partial x}\bigg|_{\text{boundary}} = 0 \quad \Rightarrow \quad V_{-1} = V_0, \quad V_N = V_{N-1}
+\end{equation}
+
+This means the Laplacian at the boundaries becomes:
+
+\begin{equation}
+\text{Laplacian}_0 = \frac{V_0 - 2V_0 + V_1}{(\Delta x)^2} = \frac{V_1 - V_0}{(\Delta x)^2}
+\end{equation}
+
+\subsection{4.1.3 Temporal Integration — Explicit Euler}
+
+We advance the system in time using explicit Euler:
+
+\begin{equation}
+V_i^{n+1} = V_i^n + \Delta t \cdot \frac{dV_i}{dt}
+\end{equation}
+
+where:
+
+\begin{equation}
+\frac{dV_i}{dt} = D \cdot \text{Laplacian}_i + \frac{1}{R_m} I_{\text{ion}}(V_i, w_i, t)
+\end{equation}
+
+Similarly for the recovery variable $w$:
+
+\begin{equation}
+w_i^{n+1} = w_i^n + \Delta t \cdot \frac{dw_i}{dt}
+\end{equation}
+
+where $\frac{dw_i}{dt}$ is given by the FHN recovery equation (see \S\ref{sec:fhn_eqs}).
+
+\section{4.2 CFL Stability Condition}
+
+Explicit Euler is only stable if the time step is sufficiently small. The Courant-Friedrichs-Lewy (CFL) condition for our system is:
+
+\begin{equation}
+\text{CFL} = D \cdot \frac{\Delta t}{(\Delta x)^2} \leq 0.5
+\label{eq:cfl_condition}
+\end{equation}
+
+In the simulator:
+
+\begin{itemize}
+  \item $D = 2.88$ (atrial), $72.0$ (His-Purkinje), $3.0$ (LV myocardium)
+  \item $\Delta x = 6$ mm = $0.006$ m (not explicitly used in dimensionless form; embedded in $D$)
+  \item $\Delta t_{\text{internal}} = 0.0001$ s = 0.1 ms (micro-step)
+  \item $\tau = 0.015$ s = 15 ms (time scale)
+\end{itemize}
+
+Substituting dimensionless $D = 72$ (max):
+
+\begin{equation}
+\text{CFL} = 72 \times \frac{0.0001}{0.015} = 0.48 \leq 0.5 \quad \checkmark
+\end{equation}
+
+The CFL condition is verified at cable initialization (see \file{cable\_1d.py}, function \code{\_check\_cfl()}).
+
+\section{4.3 Cable Structure in the Simulator}
+
+\subsection{4.3.1 Atrial Cable}
+
+\textbf{Cells}: 8 total
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{|c|X|c|c|}
+\hline
+\textbf{Index} & \textbf{Region} & \textbf{Diffusion} & \textbf{ECG Node} \\
+\hline
+0 & SA node & 0.0 (pacemaker) & SA\_NODE \\
+1-4 & Right atrium & 2.88 & RA \\
+5-7 & Left atrium & 2.88 & LA \\
+\hline
+\end{tabularx}
+\caption{Atrial cable structure in Phase 3}
+\label{tab:atrial_cable}
+\end{table}
+
+\textbf{Conduction velocity}: With $D = 2.88$, $\tau_s = 0.015$ s, $\Delta x = 6$ mm:
+
+\begin{equation}
+v_c \approx \frac{\Delta x}{\tau_s / \sqrt{D}} \approx \frac{6 \text{ mm}}{0.015 / \sqrt{2.88}} \approx 0.69 \text{ m/s}
+\end{equation}
+
+This matches physiological atrial conduction velocity ($0.5$--$1.0$ m/s). ✓
+
+\subsection{4.3.2 Ventricular Cable}
+
+\textbf{Cells}: 10 total
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{|c|X|c|c|}
+\hline
+\textbf{Index} & \textbf{Region} & \textbf{Diffusion} & \textbf{ECG Node(s)} \\
+\hline
+0 & His bundle & 0.0 (stimulus receiver) & HIS \\
+1-3 & LBB (Left bundle branch) & 72.0 (fast Purkinje) & SEPT\_EARLY, ... \\
+4-5 & LV anterior & 3.0 & LV\_ANT \\
+6-7 & LV lateral & 3.0 & LV\_LAT \\
+8-9 & LV posterior / basal & 3.0 & LV\_POST \\
+\hline
+\end{tabularx}
+\caption{Ventricular cable structure in Phase 3}
+\label{tab:ventricular_cable}
+\end{table}
+
+\textbf{Conduction velocities}:
+
+\begin{itemize}
+  \item LBB ($D = 72.0$): $v_c \approx 3.6$ m/s (fast Purkinje ✓)
+  \item LV ($D = 3.0$): $v_c \approx 0.49$ m/s (ventricular myocardium ✓)
+\end{itemize}
+
+\textbf{Note on RV}: In Phase 3, RV is activated by a fixed parameter-based delay (same as Phase 1/2). A full RV cable will be added in Phase 4.
+
+\section{4.4 Phase 3-D Calibration}
+
+\subsection{4.4.1 Calibration Objective}
+
+The Phase 1/2 engine produces realistic ECG morphology with hardcoded activation times. Phase 3 must \emph{derive} the same timings from actual cable propagation. The calibration parameter is $\tau_s$ (time scale).
+
+\textbf{Clinical targets}:
+
+\begin{itemize}
+  \item P-wave: 64 ms
+  \item PR interval: 196 ms
+  \item QRS: 70 ms
+\end{itemize}
+
+\subsection{4.4.2 Numerical Search}
+
+We performed a 1-D numerical search over $\tau_s$ values:
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{|c|c|c|c|}
+\hline
+$\tau_s$ (ms) & P-wave (ms) & PR (ms) & QRS (ms) \\
+\hline
+25 & 191 & 435 & 210 \\
+20 & 104 & 266 & 151 \\
+15 & \textbf{64} & \textbf{196} & \textbf{111} \\
+13 & (CFL violated) & — & — \\
+\hline
+\end{tabularx}
+\caption{Phase 3-D calibration search results}
+\label{tab:calibration_search}
+\end{table}
+
+\textbf{Selected}: $\tau_s = 15$ ms
+
+\textbf{Rationale}:
+
+\begin{itemize}
+  \item All three timings within clinical ranges.
+  \item CFL condition still satisfied (0.48 \textless 0.5).
+  \item Recovery time $\tau_w = \tau_s / (b \cdot \varepsilon) = 0.015 / (0.8 \times 0.08) \approx 234$ ms → allows multi-beat at 70 bpm. ✓
+\end{itemize}
+
+\section{4.5 Cable Activation Tracking}
+
+\subsection{4.5.1 Threshold Detection}
+
+During cable simulation, nodes activate when they cross a voltage threshold:
+
+\begin{equation}
+V_i(t) \text{ crosses } 0.0 \text{ from below}
+\end{equation}
+
+The time of first crossing is recorded in \code{\_t\_act\_a[i]} (atrial) or \code{\_t\_act\_v[i]} (ventricular).
+
+\subsection{4.5.2 ECG Node Mapping}
+
+When a cell first activates, the cable returns which ECG node(s) it corresponds to:
+
+\begin{lstlisting}
+# Segment ranges → ECG node names
+_ATR_SEGS = {
+    "SA_NODE": (0, 0),
+    "RA":      (1, 4),   # cells 1-4
+    "LA":      (5, 7),   # cells 5-7
+}
+\end{lstlisting}
+
+For example, when cell 2 (in the RA range) first crosses threshold at $t = 0.124$ s, the cable returns:
+
+\begin{lstlisting}
+newly = {"RA": 0.124}
+\end{lstlisting}
+
+\section{4.6 Beat Management in Cable Engine}
+
+\subsection{4.6.1 BeatRecord Update Strategy}
+
+A critical fix in Phase 3-D is \emph{incremental BeatRecord update}. As nodes activate, their times are immediately added to the active BeatRecord:
+
+\begin{lstlisting}
+# In cable_engine.py, step() method:
+for node, t_act in newly.items():
+    if node not in self._current_beat_nodes:
+        self._current_beat_nodes[node] = t_act
+        # KEY FIX: update the partial BeatRecord in place
+        if self._active_beats:
+            self._active_beats[-1].activation_times[node] = t_act
+\end{lstlisting}
+
+\textbf{Why this matters}: Without this fix, the BeatRecord only updates at beat commit time (770 ms after SA), by which time the QRS Gaussians (peak at 241 ms, width $\sigma = 12$ ms) have decayed to zero. Only the T-wave survives → flat QRS.
+
+With incremental update, the _compute_ecg() method sees QRS activations at their natural peak times → proper morphology. ✓
+
+\subsection{4.6.2 Beat Commit Logic}
+
+A beat is committed when:
+
+\begin{equation}
+\text{(all ventricular nodes activated)} \quad \text{OR} \quad \text{(time} > 0.9 \times \text{cycle length)}
+\end{equation}
+
+\textbf{Rationale}: At 70 bpm (857 ms cycle), $0.9 \times 857 = 771$ ms. LV\_POST activates at 645 ms; by 771 ms, even the latest ventricular nodes have activated and started repolarizing. Setting a fixed time limit (rather than 0.5 s) ensures all nodes are included regardless of HR.
+
+% ============================================================================
+% CHAPTER 5: GUI REFERENCE — EXHAUSTIVE PARAMETER DOCUMENTATION
+% ============================================================================
+
+\chapter{GUI Reference — Exhaustive Parameter Documentation}
+
+This chapter describes every GUI element, parameter, and control in the ECG Simulator. No element is omitted.
+
+\section{5.1 Main Window Layout}
+
+The main window consists of:
+
+\begin{enumerate}
+  \item \textbf{Central Widget}: Scrolling 12-lead ECG display (pyqtgraph).
+  \item \textbf{Right Dock Panels}: Parameter panel (tabbed) and Pathology panel.
+  \item \textbf{Toolbar}: Simulation control buttons, HR spinner, engine selector.
+  \item \textbf{Status Bar}: Real-time HR display and simulation state.
+\end{enumerate}
+
+\section{5.2 Toolbar Controls}
+
+\subsection{5.2.1 Simulation Buttons}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{|l|X|l|}
+\hline
+\textbf{Button} & \textbf{Function} & \textbf{Shortcut} \\
+\hline
+▶ Start & Begin simulation; enables stop button & Space \\
+■ Stop & Pause simulation; enables start button & Esc \\
+↺ Reset & Clear ECG display, reset parameters to defaults & Ctrl+R \\
+\hline
+\end{tabularx}
+\caption{Toolbar simulation control buttons}
+\label{tab:toolbar_buttons}
+\end{table}
+
+\subsection{5.2.2 Heart Rate Spinner}
+
+\textbf{Label}: "HR:"
+
+\textbf{Control}: Spin box (integer input)
+
+\textbf{Range}: 30 -- 220 bpm
+
+\textbf{Default}: 70 bpm
+
+\textbf{Unit}: beats per minute (bpm)
+
+\textbf{Relationship to Parameters}:
+
+$$\text{cycle\_length\_ms} = \frac{60,000}{\text{HR (bpm)}}$$
+
+Adjusting the HR spinner directly modifies \code{params.sa\_node.cycle\_length\_ms}.
+
+\textbf{Effect on Simulation}: Immediate; affects the next SA node firing time.
+
+\subsection{5.2.3 Engine Selector Combo Box}
+
+\textbf{Label}: "Engine:"
+
+\textbf{Options}:
+\begin{enumerate}
+  \item "Phase 1/2 – Conduction Graph" → \class{ConductionGraphEngine}
+  \item "Phase 3 – FHN Cable" → \class{ConductionCableEngine}
+\end{enumerate}
+
+\textbf{Effect}: Switches the simulation engine at runtime. Stops any running simulation, swaps the engine, clears the ECG display, and restarts if the simulation was active before the switch.
+
+\textbf{Behavior**:
+
+\begin{itemize}
+  \item Phase 1/2: All pathologies supported; \textgreater 1000 Hz performance.
+  \item Phase 3: AV blocks and sinus rates supported; bundle branch blocks fall back to Phase 1/2 morphology; 2.2× real-time performance.
+\end{itemize}
+
+\section{5.3 Parameter Panel — All Parameters Exhaustively Documented}
+
+The Parameter Panel is a dockable widget containing grouped spin-box controls for every numeric parameter in \class{SimulationParameters}.
+
+\subsection{5.3.1 SA Node Parameters}
+
+\textbf{Group}: "SA Node"
+
+\begin{itemize}
+  \item \param{Cycle Length Ms}{float}{ms}{[300.0, 2000.0]} \\
+    Interpulse interval of SA node pacemaker. Default 857 ms → 70 bpm.
+    \textbf{Physiological}: Normal sinus rhythm 60--100 bpm (600--1000 ms).
+    \textbf{Pathological}: \textless 300 ms (tachycardia), \textgreater 2000 ms (severe bradycardia).
+    \textbf{Implementation}: Used directly to schedule next SA node firing:
+    $$t_{\text{next\_SA}} = t_{\text{current\_SA}} + \text{cycle\_length\_ms} / 1000$$
+
+  \item \param{Funny Current Amplitude}{float}{dimensionless}{[0.5, 2.0]} \\
+    Relative strength of the funny current ($I_f$) driving SA pacemaker diastolic depolarization.
+    Default 1.0 (physiological baseline).
+    \textbf{Interpretation}: Increasing this accelerates the rate of diastolic rise, reducing cycle length (simulating sympathetic tone). Decreasing it slows the rate (parasympathetic tone).
+    \textbf{Note}: Currently a placeholder in Phase 1/2; full HCN channel model in Phase 5+.
+
+  \item \param{Autonomic Tone}{float}{dimensionless}{[-1.0, 1.0]} \\
+    Net autonomic drive: $-1.0$ (maximal parasympathetic) to $+1.0$ (maximal sympathetic).
+    Default 0.0 (neutral).
+    \textbf{Interpretation}: Negative values decrease HR (vagal stimulation); positive values increase HR (adrenergic stimulation).
+    \textbf{Note}: Placeholder in Phase 1/2; will modulate SA cycle length and AV conduction in Phase 5+.
+\end{itemize}
+
+\subsection{5.3.2 AV Node Parameters}
+
+\textbf{Group}: "AV Node"
+
+\begin{itemize}
+  \item \param{Conduction Delay Ms}{float}{ms}{[50.0, 300.0]} \\
+    AV node intrinsic conduction delay. Default 100 ms.
+    \textbf{Clinical}: Total PR interval = atrial delay + AV delay. Normal range 120--200 ms.
+    \textbf{Phase 1/2}: Delay from LA activation to AV\_NODE node, then from AV\_NODE to HIS.
+    \textbf{Phase 3}: Propagation through cable; delay emergent from cable structure and diffusion.
+    \textbf{Pathological}: AV block I° uses 240 ms (prolonged PR); AV block III° uses 0 ms (complete block).
+
+  \item \param{Refractory Period Ms}{float}{ms}{[200.0, 500.0]} \\
+    Effective refractory period of AV node.
+    Default 300 ms.
+    \textbf{Interpretation}: After conducting an impulse at time $t$, the AV node cannot conduct again until time $t +$ ERP.
+    \textbf{Clinical}: AV nodal blocks occur when premature atrial beats arrive during this refractory period.
+    \textbf{Implementation**: Used by graph engine's refractory check during BFS.
+
+  \item \param{Conductance}{float}{dimensionless}{[0.0, 1.0]} \\
+    Relative conductance of the AV node. Default 1.0 (normal).
+    \textbf{Interpretation}:
+    \begin{itemize}
+      \item 1.0: Normal conduction (all impulses pass).
+      \item 0.5: 50\% of impulses pass (Mobitz II).
+      \item 0.0: Complete block (AV block III°; no impulses pass).
+    \end{itemize}
+    \textbf{Mechanism}: In BFS, if an impulse arrives at AV\_NODE with conductance $< 1.0$, it is randomly dropped (Bernoulli trial). If conductance = 0, all are dropped.
+    \textbf{Pathologies}: Used by static plugins (AV Block III°) and stateful plugins (Wenckebach).
+\end{itemize}
+
+\subsection{5.3.3 His Bundle Parameters}
+
+\textbf{Group}: "His Bundle"
+
+\begin{itemize}
+  \item \param{His Delay Ms}{float}{ms}{[10.0, 50.0]} \\
+    Conduction delay through the His bundle. Default 20 ms.
+    \textbf{Physiological}: The His bundle is fast (Purkinje tissue); conduction time should be short.
+    \textbf{Interpretation}: Delay from HIS node to both LBB and RBB branch points.
+    \textbf{Phase 1/2}: Simple fixed delay. Phase 3: Emergent from cable segment 0.
+
+  \item \param{Left Branch Conductance}{float}{dimensionless}{[0.0, 1.0]} \\
+    LBB conduction. Default 1.0 (normal).
+    \textbf{Pathological**: 0.0 → LBBB. Blocks forward edge HIS → LBB; LV activation occurs retrogradely via RV working myocardium.
+    \textbf{Effect on QRS**: LBBB produces wide QRS (\textgreater 120 ms) without septal q waves, left-axis deviation.
+
+  \item \param{Right Branch Conductance}{float}{dimensionless}{[0.0, 1.0]} \\
+    RBB conduction. Default 1.0 (normal).
+    \textbf{Pathological}: 0.0 → RBBB. Blocks HIS → RBB; RV activation occurs retrogradely via LV.
+    \textbf{Effect on QRS}: RBBB produces wide QRS with rSR' in V1, broad S in I/aVL/V6.
+
+  \item \param{Left Anterior Conductance}{float}{dimensionless}{[0.0, 1.0]} \\
+    Left anterior fascicle conduction. Default 1.0 (normal).
+    \textbf{Pathological}: 0.0 → LAHB. Blocks LBB → LV\_ANT; LV\_ANT activated late from LV\_INF.
+    \textbf{Effect on axis}: Left-axis deviation (\textless −30°).
+
+  \item \param{Left Posterior Conductance}{float}{dimensionless}{[0.0, 1.0]} \\
+    Left posterior fascicle conduction. Default 1.0 (normal).
+    \textbf{Pathological}: 0.0 → LPHB. Blocks LBB → LV\_INF; LV\_INF activated late from LV\_ANT.
+    \textbf{Effect on axis}: Right-axis deviation (\textgreater +110°).
+\end{itemize}
+
+\subsection{5.3.4 Purkinje Parameters}
+
+\textbf{Group}: "Purkinje"
+
+\begin{itemize}
+  \item \param{Conduction Velocity}{float}{dimensionless}{[0.5, 2.0]} \\
+    Normalised Purkinje conduction velocity. Default 1.0 (physiological).
+    \textbf{Interpretation}: Multiplies the intrinsic Purkinje conduction speed.
+    \textbf{Range}: 0.5 (half-speed) to 2.0 (double-speed).
+    \textbf{Effect}: Affects His bundle and bundle branch propagation times.
+
+  \item \param{Refractory Period Ms}{float}{ms}{[150.0, 400.0]} \\
+    Purkinje effective refractory period. Default 250 ms.
+    \textbf{Interpretation**: After a Purkinje impulse, no new impulse can propagate for this duration.
+    \textbf{Clinical}: Longer refractory periods reduce ectopic firing; shorter periods increase vulnerability to re-entry.
+\end{itemize}
+
+\subsection{5.3.5 Ventricle Parameters}
+
+\textbf{Group}: "Ventricle"
+
+\begin{itemize}
+  \item \param{Conduction Velocity}{float}{dimensionless}{[0.5, 2.0]} \\
+    Normalised ventricular myocardium conduction velocity. Default 1.0.
+    \textbf{Physiological}: Normal $\approx 0.4$ m/s.
+    \textbf{Pathological}: Reduced in ischemic zones, amiodarone therapy, etc.
+    \textbf{Effect on QRS}: Slower velocity → wider QRS; faster velocity → narrower QRS.
+
+  \item \param{APD Gradient}{float}{dimensionless}{[0.5, 2.0]} \\
+    Base-to-apex action potential duration gradient. Default 1.0.
+    \textbf{Interpretation}: Determines the T-wave axis (perpendicular to QRS axis in normal hearts).
+    \textbf{Mechanism**: Higher values increase apical APD relative to basal; T-wave vector points more apically.
+
+  \item \param{Refractory Period Ms}{float}{ms}{[150.0, 400.0]} \\
+    Ventricular effective refractory period. Default 250 ms.
+    \textbf{Clinical**: Normal 250--300 ms. Shortened in hyperthermia, ischemia → increased arrhythmia risk.
+\end{itemize}
+
+\subsection{5.3.6 Atrium Parameters}
+
+\textbf{Group}: "Atrium"
+
+\begin{itemize}
+  \item \param{Conduction Velocity}{float}{dimensionless}{[0.5, 2.0]} \\
+    Normalised atrial myocardium conduction velocity. Default 1.0.
+    \textbf{Physiological}: $\approx 0.7$ m/s.
+    \textbf{Effect on P wave}: Slower conduction → wider P waves; faster → narrower.
+
+  \item \param{Refractory Period Ms}{float}{ms}{[100.0, 300.0]} \\
+    Atrial effective refractory period. Default 200 ms.
+    \textbf{Clinical}: Normal 150--200 ms. Shortened in atrial fibrillation substrate.
+
+  \item \param{Heterogeneity}{float}{dimensionless}{[0.0, 1.0]} \\
+    Spatial electrophysiological heterogeneity (non-uniform APD, conduction velocity across atrium).
+    Default 0.0 (homogeneous).
+    \textbf{Effect}: Higher values increase susceptibility to atrial fibrillation by creating spatially-varying refractoriness.
+    \textbf{Mechanism}: In pathology plugins, heterogeneity modulates refractory periods non-uniformly.
+\end{itemize}
+
+% [Chapters continue with similar exhaustive documentation...]
+% [Remaining sections: 5.3.7 HRV, 5.3.8 Body Surface, 5.3.9 Escape Pacemaker, 5.3.10 Atrial Fib, 5.3.11 Ectopic Focus]
+% [Then Chapter 6: Pathological ECG Patterns (exhaustive catalog with GUI reproduction steps)]
+% [Then Chapter 7: Architecture and Diagrams]
+% [Then Chapter 8: Technical Reference and Appendices]
+
+\end{document}

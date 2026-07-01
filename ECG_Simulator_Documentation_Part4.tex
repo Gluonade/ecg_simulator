@@ -1,0 +1,502 @@
+\documentclass[11pt, a4paper]{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage[margin=1in]{geometry}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{tabularx}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray},
+    stringstyle=\color{red},
+    breaklines=true,
+    language=Python
+}
+
+\title{ECG Simulator Documentation\\Part 4: GUI Reference \& Parameter Reference}
+\author{Comprehensive Technical Documentation}
+\date{June 2026}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Part 4: GUI Reference}
+\lhead{ECG Simulator}
+\cfoot{\thepage}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+\section{Main Window Architecture}
+
+\subsection{Overview}
+The PyQt6-based GUI provides real-time visualization of 12-lead ECG with interactive parameter control. The main window is organized into three primary regions:
+
+\begin{itemize}
+    \item \textbf{Control Panel} (left): Heart rate, engine selection, beat controls
+    \item \textbf{ECG Display} (center): Real-time scrolling 12-lead ECG trace
+    \item \textbf{Parameter Panel} (right): 50+ physiological parameter controls
+\end{itemize}
+
+\subsection{Control Panel Layout}
+
+\subsubsection{Heart Rate (HR) Control}
+\begin{itemize}
+    \item \textbf{Widget Type}: QSpinBox
+    \item \textbf{Range}: 30--220 bpm
+    \item \textbf{Default}: 70 bpm
+    \item \textbf{Step}: 1 bpm
+    \item \textbf{Effect}: Directly sets SA node cycle length via:
+    \begin{equation}
+        \text{cycle\_length} = \frac{60}{HR}
+    \end{equation}
+    \item \textbf{Clinical Range}: 60--100 bpm (normal sinus rhythm)
+    \item \textbf{Bradycardia}: <60 bpm (typically 40--60 in athletes)
+    \item \textbf{Tachycardia}: >100 bpm (up to 200+ during exercise)
+\end{itemize}
+
+\subsubsection{Simulation Engine Selector}
+\begin{itemize}
+    \item \textbf{Widget Type}: QComboBox
+    \item \textbf{Options}: 
+    \begin{itemize}
+        \item \texttt{graph} (Phase 1/2: BFS-based, >1000 Hz, deterministic)
+        \item \texttt{cable} (Phase 3: FHN cable, 2.2× real-time, physiologically accurate)
+    \end{itemize}
+    \item \textbf{Default}: \texttt{graph}
+    \item \textbf{Effect}: Switches underlying simulation engine
+    \item \textbf{Behavior}: Resets current beat on switch
+\end{itemize}
+
+\subsubsection{Beat Control Buttons}
+\begin{itemize}
+    \item \textbf{Start Button}: Begin continuous rhythm generation
+    \begin{itemize}
+        \item Starts simulation timer (33 ms per frame @ 30 FPS)
+        \item Disables beat controls during active simulation
+    \end{itemize}
+    \item \textbf{Stop Button}: Pause simulation (preserves current ECG trace)
+    \begin{itemize}
+        \item Allows parameter adjustment without clearing ECG
+    \end{itemize}
+    \item \textbf{Reset Button}: Clear ECG trace and restart
+    \begin{itemize}
+        \item Clears all accumulated beats from display
+        \item Resets internal beat counters
+    \end{itemize}
+\end{itemize}
+
+\section{ECG Display Widget}
+
+\subsection{Real-Time 12-Lead Display}
+\begin{itemize}
+    \item \textbf{Library}: pyqtgraph (for real-time plotting performance)
+    \item \textbf{Update Rate}: 30 FPS
+    \item \textbf{Scroll Behavior}: Left-to-right, continuous scroll
+    \item \textbf{Time Window}: ~10 seconds visible (adjustable)
+    \item \textbf{Leads Displayed}: All 12 ECG leads (6 frontal + 6 precordial)
+\end{itemize}
+
+\subsection{12-Lead Organization}
+
+\subsubsection{Frontal Leads (rows 1--2)}
+\begin{tabularx}{\textwidth}{|X|X|X|}
+\hline
+\textbf{Lead} & \textbf{Axis} & \textbf{Clinical Use} \\
+\hline
+I & 0° (left) & Left-right forces \\
+II & 60° (inferolateral) & Inferior/lateral forces \\
+III & 120° (inferior) & Inferior forces \\
+aVR & -150° (right) & Right atrium/ventricle \\
+aVL & -30° (left) & Left ventricle \\
+aVF & 90° (inferior) & Inferior wall \\
+\hline
+\end{tabularx}
+
+\subsubsection{Precordial Leads (rows 3--4)}
+\begin{tabularx}{\textwidth}{|X|X|X|}
+\hline
+\textbf{Lead} & \textbf{Anatomical Position} & \textbf{Chamber} \\
+\hline
+V1 & 4th ICS, right sternal border & RV outflow \\
+V2 & 4th ICS, left sternal border & LV outflow \\
+V3 & Midway V2--V4 & LV septum \\
+V4 & 5th ICS, midclavicular & LV apex \\
+V5 & 5th ICS, anterior axillary & LV lateral \\
+V6 & 5th ICS, midaxillary & LV lateral \\
+\hline
+\end{tabularx}
+
+\section{Parameter Panel Organization}
+
+\subsection{Structure}
+The parameter panel is organized into 12 collapsible groups:
+
+\begin{enumerate}
+    \item SA Node Parameters
+    \item AV Node Parameters
+    \item His Bundle \& Purkinje
+    \item Atrial Conduction
+    \item Ventricular Conduction
+    \item Ventricular Refractory Periods
+    \item Escape Pacemaker
+    \item Atrial Fibrillation
+    \item Ectopic Focus
+    \item ECG Scaling
+    \item Plugin Controls
+    \item Advanced/Debug
+\end{enumerate}
+
+\newpage
+\section{Complete Parameter Reference (50+ Parameters)}
+
+\subsection{Group 1: SA Node Parameters}
+
+\begin{tabularx}{\textwidth}{|l|X|c|c|}
+\hline
+\textbf{Parameter} & \textbf{Description} & \textbf{Range} & \textbf{Unit} \\
+\hline
+cycle\_length & Interval between SA fires & 0.3--2.0 & s \\
+funny\_current & HCN4 channel conductance & 0.0--1.0 & g/g\_max \\
+autonomic\_tone & Sympathetic/parasympathetic balance & -1.0 to +1.0 & normalized \\
+\hline
+\end{tabularx}
+
+\subsubsection{Usage Notes}
+\begin{itemize}
+    \item \textbf{cycle\_length}: Typically set via HR spinner; direct control available
+    \item \textbf{funny\_current}: Alters SA pacemaker rate
+        \begin{itemize}
+            \item 0.0 = No spontaneous depolarization (requires external stimulus)
+            \item 1.0 = Maximum rate (~200 bpm)
+        \end{itemize}
+    \item \textbf{autonomic\_tone}: Modulates HR via sympathetic/parasympathetic effects
+        \begin{itemize}
+            \item -1.0 = Maximum parasympathetic (vagal): ~40 bpm
+            \item 0.0 = Balanced (normal): ~70 bpm
+            \item +1.0 = Maximum sympathetic: ~120 bpm
+        \end{itemize}
+\end{itemize}
+
+\subsection{Group 2: AV Node Parameters}
+
+\begin{tabularx}{\textwidth}{|l|X|c|c|}
+\hline
+\textbf{Parameter} & \textbf{Description} & \textbf{Range} & \textbf{Unit} \\
+\hline
+av\_delay & Conduction time through AV node & 0.05--0.30 & s \\
+av\_refractory & AV node absolute refractory period & 0.20--0.40 & s \\
+conductance & AV nodal conductance (0=block) & 0.0--1.0 & g/g\_max \\
+\hline
+\end{tabularx}
+
+\subsubsection{Clinical Significance}
+\begin{itemize}
+    \item \textbf{av\_delay}: Normal = 100--200 ms
+        \begin{itemize}
+            \item Controls PR interval via: $PR = P\text{-wave} + av\_delay + QRS$
+            \item Prolonged PR (First-degree AV block) when >200 ms
+        \end{itemize}
+    \item \textbf{conductance}: Controls AV block severity
+        \begin{itemize}
+            \item 1.0 = Normal conduction (1:1 conduction ratio)
+            \item 0.5 = 2:1 AV block (every 2nd atrial beat blocked)
+            \item 0.0 = Complete AV block (III° AV block)
+        \end{itemize}
+\end{itemize}
+
+\subsection{Group 3: His Bundle \& Purkinje System}
+
+\begin{tabularx}{\textwidth}{|l|X|c|c|}
+\hline
+\textbf{Parameter} & \textbf{Description} & \textbf{Range} & \textbf{Unit} \\
+\hline
+his\_delay & His bundle conduction time & 0.01--0.05 & s \\
+lbb\_conductance & Left bundle branch conductance & 0.0--1.0 & g/g\_max \\
+rbb\_conductance & Right bundle branch conductance & 0.0--1.0 & g/g\_max \\
+lahb\_conductance & Left ant. fascicle conductance & 0.0--1.0 & g/g\_max \\
+lphb\_conductance & Left post. fascicle conductance & 0.0--1.0 & g/g\_max \\
+\hline
+\end{tabularx}
+
+\subsubsection{Bundle Branch Block Patterns}
+\begin{itemize}
+    \item \textbf{LBBB} (Left Bundle Branch Block):
+    \begin{itemize}
+        \item Set lbb\_conductance = 0.0, keep rbb\_conductance = 1.0
+        \item ECG: Broad QRS (>120 ms), M-shaped in V5--V6
+    \end{itemize}
+    \item \textbf{RBBB} (Right Bundle Branch Block):
+    \begin{itemize}
+        \item Set rbb\_conductance = 0.0, keep lbb\_conductance = 1.0
+        \item ECG: Broad QRS (>120 ms), M-shaped in V1--V2
+    \end{itemize}
+    \item \textbf{LAHB} (Left Anterior Hemiblock):
+    \begin{itemize}
+        \item Set lahb\_conductance = 0.0, keep lphb\_conductance = 1.0
+        \item ECG: Left axis deviation, QRS <120 ms
+    \end{itemize}
+    \item \textbf{LPHB} (Left Posterior Hemiblock):
+    \begin{itemize}
+        \item Set lphb\_conductance = 0.0, keep lahb\_conductance = 1.0
+        \item ECG: Right axis deviation, QRS <120 ms
+    \end{itemize}
+\end{itemize}
+
+\subsection{Group 4: Atrial Conduction}
+
+\begin{tabularx}{\textwidth}{|l|X|c|c|}
+\hline
+\textbf{Parameter} & \textbf{Description} & \textbf{Range} & \textbf{Unit} \\
+\hline
+ra\_conduction & Right atrial conduction velocity & 0.50--1.50 & m/s \\
+la\_conduction & Left atrial conduction velocity & 0.50--1.50 & m/s \\
+atrial\_refractory & Atrial myocardium absolute refractory & 0.20--0.35 & s \\
+\hline
+\end{tabularx}
+
+\subsection{Group 5: Ventricular Conduction}
+
+\begin{tabularx}{\textwidth}{|l|X|c|c|}
+\hline
+\textbf{Parameter} & \textbf{Description} & \textbf{Range} & \textbf{Unit} \\
+\hline
+sept\_conduction & Septal conduction velocity & 0.3--1.5 & m/s \\
+lv\_conduction & LV free wall conduction velocity & 0.30--1.0 & m/s \\
+rv\_conduction & RV free wall conduction velocity & 0.30--1.0 & m/s \\
+\hline
+\end{tabularx}
+
+\subsubsection{QRS Duration Formula}
+Total QRS duration depends on conduction velocities and geometric path lengths.
+For Phase 1/2 engine:
+\begin{equation}
+    QRS_{\text{duration}} \approx \frac{\text{longest path}}{v_{\text{min}}}
+\end{equation}
+
+\subsection{Group 6: Ventricular Refractory Periods}
+
+\begin{tabularx}{\textwidth}{|l|X|c|c|}
+\hline
+\textbf{Parameter} & \textbf{Description} & \textbf{Range} & \textbf{Unit} \\
+\hline
+vent\_abs\_refr & Absolute refractory period & 0.25--0.45 & s \\
+vent\_rel\_refr & Relative refractory period & 0.10--0.35 & s \\
+\hline
+\end{tabularx}
+
+\subsubsection{Physiological Basis}
+\begin{itemize}
+    \item \textbf{Absolute Refractory Period (ARP)}: Voltage-gated Na$^+$ channels inactivated
+        \begin{itemize}
+            \item No stimulus can trigger action potential
+            \item Normal duration: 200--300 ms
+            \item Set on Phase 1/2 engine only
+        \end{itemize}
+    \item \textbf{Relative Refractory Period (RRP)}: Partial recovery of Na$^+$ channel availability
+        \begin{itemize}
+            \item Stimulus can trigger AP but with reduced amplitude
+            \item Conduction may be slower or blocked
+            \item Normal duration: 150--300 ms additional
+        \end{itemize}
+    \item \textbf{Phase 3 Engine}: Refractory periods emerge naturally from FHN $w$ variable
+        \begin{itemize}
+            \item Recovery time determined by:
+            \begin{equation}
+                \tau_w = \frac{\tau_s}{b \cdot \varepsilon} = \frac{0.015}{0.8 \times 0.08} \approx 234 \text{ ms}
+            \end{equation}
+            \item No explicit refractory parameter needed
+        \end{itemize}
+\end{itemize}
+
+\subsection{Group 7: Escape Pacemaker}
+
+\begin{tabularx}{\textwidth}{|l|X|c|c|}
+\hline
+\textbf{Parameter} & \textbf{Description} & \textbf{Range} & \textbf{Unit} \\
+\hline
+escape\_enabled & Enable backup pacemaker & Yes/No & bool \\
+escape\_interval & Escape interval (interval without SA) & 0.5--3.0 & s \\
+escape\_origin & Ectopic site (AV/HIS/LV) & enum & - \\
+\hline
+\end{tabularx}
+
+\subsubsection{Escape Pacemaker Mechanism}
+\begin{itemize}
+    \item Automatically fires if no atrial impulse received
+    \item Clinical significance:
+    \begin{itemize}
+        \item \textbf{Junctional escape} (origin=AV): Fires at ~40--60 bpm, narrow QRS
+        \item \textbf{Ventricular escape} (origin=LV): Fires at ~20--40 bpm, broad QRS
+    \end{itemize}
+    \item escape\_interval determines delay before firing:
+    \begin{itemize}
+        \item If no stimulus received for >escape\_interval seconds, escape fires
+        \item Common clinical values: 1.5--3.0 seconds
+    \end{itemize}
+\end{itemize}
+
+\subsection{Group 8: Atrial Fibrillation}
+
+\begin{tabularx}{\textwidth}{|l|X|c|c|}
+\hline
+\textbf{Parameter} & \textbf{Description} & \textbf{Range} & \textbf{Unit} \\
+\hline
+af\_enabled & Enable atrial fibrillation & Yes/No & bool \\
+af\_rate & F-wave (fibrillatory wave) rate & 300--700 & bpm \\
+af\_rr\_distribution & RR interval variation type & fixed/poisson/gaussian & enum \\
+af\_f\_amplitude & F-wave amplitude & 0.01--0.20 & mV \\
+\hline
+\end{tabularx}
+
+\subsubsection{AF ECG Characteristics}
+\begin{itemize}
+    \item \textbf{AF Rate}: Normal 300--600 bpm (fibrillatory waves from disorganized reentry)
+        \begin{itemize}
+            \item Slower rates (300 bpm) suggest possible organized activity (flutter)
+            \item Faster rates (600+ bpm) suggest rapid fibrillatory activity
+        \end{itemize}
+    \item \textbf{RR Distribution}:
+    \begin{itemize}
+        \item fixed: Constant interval (used for testing)
+        \item poisson: Random exponential intervals (physiologic, irregular)
+        \item gaussian: Normal distribution around mean (moderate irregularity)
+    \end{itemize}
+    \item \textbf{F-wave Amplitude}: Visible baseline oscillations
+        \begin{itemize}
+            \item Coarse AF: >0.10 mV (more organized)
+            \item Fine AF: <0.05 mV (more disorganized)
+        \end{itemize}
+\end{itemize}
+
+\subsection{Group 9: Ectopic Focus}
+
+\begin{tabularx}{\textwidth}{|l|X|c|c|}
+\hline
+\textbf{Parameter} & \textbf{Description} & \textbf{Range} & \textbf{Unit} \\
+\hline
+ectopic\_enabled & Enable ectopic focus & Yes/No & bool \\
+ectopic\_coupling & Coupling interval (PVC timing) & 0.40--0.80 & s \\
+ectopic\_repetitive & Consecutive ectopics & Yes/No & bool \\
+ectopic\_origin & Ectopic site & LA/RA/LV/RV & enum \\
+\hline
+\end{tabularx}
+
+\subsubsection{Premature Contraction Types}
+\begin{itemize}
+    \item \textbf{PAC (Premature Atrial Contraction)}:
+    \begin{itemize}
+        \item Set ectopic\_origin = LA or RA
+        \item Normal coupling: 350--450 ms
+        \item Early coupling (<350 ms) may block AV node → aberrant conduction
+    \end{itemize}
+    \item \textbf{PVC (Premature Ventricular Contraction)}:
+    \begin{itemize}
+        \item Set ectopic\_origin = LV or RV
+        \item Normal coupling: 400--600 ms
+        \item ECG: Broad QRS (>120 ms), T-wave opposite normal polarity
+        \item Couplets/triplets possible if ectopic\_repetitive = true
+    \end{itemize}
+\end{itemize}
+
+\subsection{Group 10: ECG Scaling}
+
+\begin{tabularx}{\textwidth}{|l|X|c|c|}
+\hline
+\textbf{Parameter} & \textbf{Description} & \textbf{Range} & \textbf{Unit} \\
+\hline
+amplitude\_scale & Global amplitude multiplier & 0.1--5.0 & unitless \\
+baseline\_shift & DC offset for visibility & -2.0--+2.0 & mV \\
+\hline
+\end{tabularx}
+
+\newpage
+\section{Advanced Controls \& Debug Parameters}
+
+\subsection{Group 11: Plugin Controls}
+\begin{itemize}
+    \item \textbf{Active Plugins}: Dropdown showing enabled pathologies
+    \item \textbf{Plugin Stacking}: Select multiple pathologies simultaneously
+    \item \textbf{Save/Load Presets}: Store/retrieve parameter combinations
+\end{itemize}
+
+\subsection{Group 12: Advanced/Debug}
+
+\begin{tabularx}{\textwidth}{|l|X|c|c|}
+\hline
+\textbf{Parameter} & \textbf{Description} & \textbf{Range} & \textbf{Unit} \\
+\hline
+debug\_mode & Enable diagnostic output & Yes/No & bool \\
+show\_activation\_times & Print node activation times & Yes/No & bool \\
+cable\_internal\_dt & Phase 3 integration step & 0.0001--0.001 & s \\
+\hline
+\end{tabularx}
+
+\section{Parameter Adjustment Workflow}
+
+\subsection{Typical Use Cases}
+
+\subsubsection{Scenario 1: Simulate Normal Sinus Rhythm}
+\begin{enumerate}
+    \item HR = 70 bpm
+    \item All conductances = 1.0
+    \item All refractories = defaults
+    \item af\_enabled = false
+    \item ectopic\_enabled = false
+\end{enumerate}
+
+\subsubsection{Scenario 2: Simulate First-Degree AV Block}
+\begin{enumerate}
+    \item HR = 70 bpm
+    \item av\_delay = 0.25 s (prolonged from normal 0.15 s)
+    \item av\_conductance = 1.0 (1:1 conduction maintained)
+    \item Result: PR interval >200 ms
+\end{enumerate}
+
+\subsubsection{Scenario 3: Simulate Left Bundle Branch Block}
+\begin{enumerate}
+    \item HR = 70 bpm
+    \item lbb\_conductance = 0.0 (complete block)
+    \item rbb\_conductance = 1.0 (normal)
+    \item Result: Broad QRS (>120 ms), wide S wave in V5--V6
+\end{enumerate}
+
+\subsubsection{Scenario 4: Simulate Atrial Fibrillation}
+\begin{enumerate}
+    \item HR = 130 bpm (controlled ventricular rate)
+    \item af\_enabled = true
+    \item af\_rate = 450 bpm (fibrillatory waves)
+    \item af\_rr\_distribution = poisson
+    \item Result: Irregular rhythm, absent P waves, f-waves visible
+\end{enumerate}
+
+\section{Real-Time Display Updates}
+
+\subsection{Refresh Mechanism}
+\begin{itemize}
+    \item GUI updates at 30 FPS
+    \item ECG trace accumulates every ~33 ms
+    \item Leads redrawn continuously
+    \item Parameters can be adjusted without stopping simulation
+\end{itemize}
+
+\subsection{Performance Notes}
+\begin{itemize}
+    \item Phase 1/2 engine: >1000 Hz update rate → GPU-limited by display
+    \item Phase 3 engine: ~150 Hz (2.2× real-time) → smooth real-time performance
+    \item Parameter changes take effect immediately on next beat
+    \item HR changes cause immediate cycle\_length update
+\end{itemize}
+
+\end{document}

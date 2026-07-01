@@ -1,0 +1,43 @@
+\contentsline {chapter}{\numberline {1}Project Overview}{1}{chapter.1}%
+\contentsline {section}{\numberline {1.1}Purpose and Scope}{1}{section.1.1}%
+\contentsline {section}{\numberline {1.2}Key Capabilities}{1}{section.1.2}%
+\contentsline {section}{\numberline {1.3}Development Phases}{2}{section.1.3}%
+\contentsline {subsection}{\numberline {1.3.1}Phase 1/2: Conduction Graph Engine}{2}{subsection.1.3.1}%
+\contentsline {subsection}{\numberline {1.3.2}Phase 3: FitzHugh-Nagumo Cable Engine}{2}{subsection.1.3.2}%
+\contentsline {section}{\numberline {1.4}User-Selectable Engine}{3}{section.1.4}%
+\contentsline {chapter}{\numberline {2}Theoretical Foundations: Mathematical and Physical Models}{4}{chapter.2}%
+\contentsline {section}{\numberline {2.1}Cardiac Electrophysiology Primer}{4}{section.2.1}%
+\contentsline {subsection}{\numberline {2.1.1}The Action Potential}{4}{subsection.2.1.1}%
+\contentsline {subsubsection}{Phases of the Cardiac Action Potential}{4}{section*.5}%
+\contentsline {subsubsection}{Refractoriness}{5}{section*.7}%
+\contentsline {subsection}{\numberline {2.1.2}Conduction Velocity}{5}{subsection.2.1.2}%
+\contentsline {section}{\numberline {2.2}ECG Generation: The Dipole Model}{6}{section.2.2}%
+\contentsline {subsection}{\numberline {2.2.1}Cardiac Electrical Dipole}{6}{subsection.2.2.1}%
+\contentsline {subsection}{\numberline {2.2.2}12-Lead ECG and Lead Vectors}{6}{subsection.2.2.2}%
+\contentsline {subsection}{\numberline {2.2.3}Gaussian Dipole Model}{6}{subsection.2.2.3}%
+\contentsline {section}{\numberline {2.3}Model (Phase 3)}{7}{section.2.3}%
+\contentsline {subsection}{\numberline {2.3.1}Biological Motivation}{7}{subsection.2.3.1}%
+\contentsline {subsection}{\numberline {2.3.2}The FitzHugh-Nagumo Equations}{7}{subsection.2.3.2}%
+\contentsline {subsubsection}{Fast-Slow Dynamics}{8}{section*.8}%
+\contentsline {subsubsection}{Action Potential Duration}{8}{section*.9}%
+\contentsline {subsection}{\numberline {2.3.3}Discretization: Monodomain Cable}{9}{subsection.2.3.3}%
+\contentsline {subsection}{\numberline {2.3.4}Numerical Integration}{9}{subsection.2.3.4}%
+\contentsline {section}{\numberline {2.4}Conduction Graph Model (Phase 1/2)}{9}{section.2.4}%
+\contentsline {subsection}{\numberline {2.4.1}Graph Structure}{9}{subsection.2.4.1}%
+\contentsline {subsection}{\numberline {2.4.2}Activation Propagation}{10}{subsection.2.4.2}%
+\contentsline {subsection}{\numberline {2.4.3}Pathological Modifications}{11}{subsection.2.4.3}%
+\contentsline {chapter}{\numberline {3}Implementation in Python: Core Modules and Functions}{12}{chapter.3}%
+\contentsline {section}{\numberline {3.1}Project Directory Structure}{12}{section.3.1}%
+\contentsline {section}{\numberline {3.2}Core Interfaces and Abstract Classes}{12}{section.3.2}%
+\contentsline {subsection}{\numberline {3.2.1}SimulationEngine Abstract Base Class}{12}{subsection.3.2.1}%
+\contentsline {subsection}{\numberline {3.2.2}ECGSample and SimulationState Data Classes}{13}{subsection.3.2.2}%
+\contentsline {section}{\numberline {3.3}Implementation: ConductionGraphEngine}{13}{section.3.3}%
+\contentsline {subsection}{\numberline {3.3.1}Class Overview}{13}{subsection.3.3.1}%
+\contentsline {subsection}{\numberline {3.3.2}Key Functions}{13}{subsection.3.3.2}%
+\contentsline {subsubsection}{\texttt {\_build\_nodes} and \texttt {build\_physiological\_graph}}{13}{section*.10}%
+\contentsline {subsubsection}{\texttt {\_compute\_ecg}}{13}{section*.11}%
+\contentsline {section}{\numberline {3.4}Implementation: ConductionCableEngine}{14}{section.3.4}%
+\contentsline {subsection}{\numberline {3.4.1}Class Overview}{14}{subsection.3.4.1}%
+\contentsline {subsection}{\numberline {3.4.2}Cable Propagation: ConductionCable1D}{14}{subsection.3.4.2}%
+\contentsline {subsubsection}{Class Overview and Fixed Parameters}{14}{section*.12}%
+\contentsline {subsubsection}{Numerical Integration: \texttt {\_fhn\_cable\_step}}{15}{section*.13}%

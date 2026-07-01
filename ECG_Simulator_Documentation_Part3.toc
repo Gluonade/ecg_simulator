@@ -1,0 +1,68 @@
+\contentsline {chapter}{\numberline {1}Pathological ECG Patterns: Clinical Descriptions and Reproduction}{1}{chapter.1}%
+\contentsline {section}{\numberline {1.1}AV Conduction Abnormalities}{1}{section.1.1}%
+\contentsline {subsection}{\numberline {1.1.1}First-Degree AV Block}{1}{subsection.1.1.1}%
+\contentsline {subsubsection}{Clinical Description}{1}{section*.4}%
+\contentsline {subsubsection}{ECG Characteristics}{1}{section*.5}%
+\contentsline {subsubsection}{Simulator Parameters: Reproduction}{1}{section*.6}%
+\contentsline {subsubsection}{Implementation}{2}{section*.7}%
+\contentsline {subsection}{\numberline {1.1.2}Second-Degree AV Block (Mobitz II)}{2}{subsection.1.1.2}%
+\contentsline {subsubsection}{Clinical Description}{2}{section*.8}%
+\contentsline {subsubsection}{ECG Characteristics}{3}{section*.9}%
+\contentsline {subsubsection}{Simulator Parameters: Reproduction}{3}{section*.10}%
+\contentsline {subsection}{\numberline {1.1.3}Third-Degree AV Block (Complete Heart Block)}{3}{subsection.1.1.3}%
+\contentsline {subsubsection}{Clinical Description}{3}{section*.11}%
+\contentsline {subsubsection}{ECG Characteristics}{4}{section*.12}%
+\contentsline {subsubsection}{Simulator Parameters: Reproduction}{4}{section*.13}%
+\contentsline {section}{\numberline {1.2}Bundle Branch Blocks}{4}{section.1.2}%
+\contentsline {subsection}{\numberline {1.2.1}Right Bundle Branch Block (RBBB)}{4}{subsection.1.2.1}%
+\contentsline {subsubsection}{Clinical Description}{4}{section*.14}%
+\contentsline {subsubsection}{ECG Characteristics}{5}{section*.15}%
+\contentsline {subsubsection}{Simulator Parameters: Reproduction}{5}{section*.16}%
+\contentsline {subsection}{\numberline {1.2.2}Left Bundle Branch Block (LBBB)}{5}{subsection.1.2.2}%
+\contentsline {subsubsection}{Clinical Description}{5}{section*.17}%
+\contentsline {subsubsection}{ECG Characteristics}{6}{section*.18}%
+\contentsline {subsubsection}{Simulator Parameters: Reproduction}{6}{section*.19}%
+\contentsline {section}{\numberline {1.3}Atrial Arrhythmias}{6}{section.1.3}%
+\contentsline {subsection}{\numberline {1.3.1}Atrial Fibrillation (AFib)}{6}{subsection.1.3.1}%
+\contentsline {subsubsection}{Clinical Description}{6}{section*.20}%
+\contentsline {subsubsection}{ECG Characteristics}{7}{section*.21}%
+\contentsline {subsubsection}{Simulator Parameters: Reproduction}{7}{section*.22}%
+\contentsline {subsection}{\numberline {1.3.2}Sinus Bradycardia}{7}{subsection.1.3.2}%
+\contentsline {subsubsection}{Clinical Description}{7}{section*.23}%
+\contentsline {subsubsection}{ECG Characteristics}{7}{section*.24}%
+\contentsline {subsubsection}{Simulator Parameters: Reproduction}{8}{section*.25}%
+\contentsline {subsection}{\numberline {1.3.3}Sinus Tachycardia}{8}{subsection.1.3.3}%
+\contentsline {subsubsection}{Clinical Description}{8}{section*.26}%
+\contentsline {subsubsection}{ECG Characteristics}{8}{section*.27}%
+\contentsline {subsubsection}{Simulator Parameters: Reproduction}{9}{section*.28}%
+\contentsline {section}{\numberline {1.4}Ventricular Arrhythmias}{9}{section.1.4}%
+\contentsline {subsection}{\numberline {1.4.1}Premature Ventricular Contraction (PVC)}{9}{subsection.1.4.1}%
+\contentsline {subsubsection}{Clinical Description}{9}{section*.29}%
+\contentsline {subsubsection}{ECG Characteristics}{9}{section*.30}%
+\contentsline {subsubsection}{Simulator Parameters: Reproduction}{10}{section*.31}%
+\contentsline {subsection}{\numberline {1.4.2}Ventricular Fibrillation (VF)}{10}{subsection.1.4.2}%
+\contentsline {subsubsection}{Clinical Description}{10}{section*.32}%
+\contentsline {subsubsection}{ECG Characteristics}{10}{section*.33}%
+\contentsline {subsubsection}{Simulator Parameters: Reproduction}{11}{section*.34}%
+\contentsline {chapter}{\numberline {2}Architecture and Design Diagrams}{12}{chapter.2}%
+\contentsline {section}{\numberline {2.1}Class Hierarchy Diagram}{12}{section.2.1}%
+\contentsline {section}{\numberline {2.2}Function Call Graph (Phase 3)}{12}{section.2.2}%
+\contentsline {section}{\numberline {2.3}Data Flow: Parameter Changes}{12}{section.2.3}%
+\contentsline {section}{\numberline {2.4}State Machine: Beat Lifecycle (Phase 3)}{13}{section.2.4}%
+\contentsline {chapter}{\numberline {3}Technical Reference and Appendices}{14}{chapter.3}%
+\contentsline {section}{\numberline {3.1}FHN Model Constants and Ranges}{15}{section.3.1}%
+\contentsline {section}{\numberline {3.2}ECG Node Configuration (Phase 3)}{16}{section.3.2}%
+\contentsline {section}{\numberline {3.3}Installation and Running}{16}{section.3.3}%
+\contentsline {subsection}{\numberline {3.3.1}Prerequisites}{16}{subsection.3.3.1}%
+\contentsline {subsection}{\numberline {3.3.2}Setup Steps}{16}{subsection.3.3.2}%
+\contentsline {subsection}{\numberline {3.3.3}Running Tests}{17}{subsection.3.3.3}%
+\contentsline {section}{\numberline {3.4}Performance Considerations}{17}{section.3.4}%
+\contentsline {subsection}{\numberline {3.4.1}Phase 1/2 (Graph Engine)}{17}{subsection.3.4.1}%
+\contentsline {subsection}{\numberline {3.4.2}Phase 3 (Cable Engine)}{17}{subsection.3.4.2}%
+\contentsline {section}{\numberline {3.5}Validation Results}{18}{section.3.5}%
+\contentsline {subsection}{\numberline {3.5.1}Phase 3-D Timing Validation}{18}{subsection.3.5.1}%
+\contentsline {subsection}{\numberline {3.5.2}Multi-Beat Rhythm (Phase 3)}{18}{subsection.3.5.2}%
+\contentsline {subsection}{\numberline {3.5.3}Amplitude Validation (Phase 3)}{18}{subsection.3.5.3}%
+\contentsline {section}{\numberline {3.6}File Organization Summary}{18}{section.3.6}%
+\contentsline {section}{\numberline {3.7}Glossary of Abbreviations}{19}{section.3.7}%
+\contentsline {section}{\numberline {3.8}References and Further Reading}{19}{section.3.8}%

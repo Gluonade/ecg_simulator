@@ -1,0 +1,800 @@
+\documentclass[12pt,a4paper,oneside]{book}
+
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{setspace}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+
+
+% Python code highlighting
+    language=Python,
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray},
+    stringstyle=\color{red},
+    showstringspaces=false,
+    frame=single,
+    rulecolor=\color{black!30}
+}
+
+% Document metadata
+\title{\Large \textbf{ECG Simulator}\\
+        \large Comprehensive Technical Documentation\\
+        \normalsize Phase 1/2 (Conduction Graph) and Phase 3 (FHN Cable)}
+\author{Enrico Caruso\\Engineering \& Simulation}
+\date{\today}
+
+% Header and footer
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small ECG Simulator Documentation}
+\fancyhead[R]{\small Part 1 of 3}
+\fancyfoot[C]{\thepage}
+
+% Custom commands
+\newcommand{\class}[1]{\texttt{\textbf{#1}}}
+\newcommand{\func}[1]{\texttt{#1}()}
+\newcommand{\param}[1]{\textit{#1}}
+
+\onehalfspacing
+
+\begin{document}
+
+\frontmatter
+
+\maketitle
+
+\tableofcontents
+\listoffigures
+\listoftables
+
+\chapter*{About This Documentation}
+
+This document provides exhaustive technical documentation of the ECG Simulator project, designed for four distinct audiences simultaneously:
+
+\begin{itemize}
+    \item \textbf{Physicians and medical students}: ECG theory and clinical interpretation with minimal mathematical background required.
+    \item \textbf{Bioscientists and physiologists}: Cardiac electrophysiology without requiring programming expertise.
+    \item \textbf{Mathematicians and physicists}: Full mathematical rigor and physical modeling details.
+    \item \textbf{Software engineers}: Complete implementation details, code structure, and dependencies.
+\end{itemize}
+
+\noindent All concepts are explained from first principles. Where appropriate, concepts are stratified so that readers can engage at their level of interest.
+
+\mainmatter
+
+% ================================================================
+\chapter{Project Overview}
+% ================================================================
+
+\section{Purpose and Scope}
+
+The ECG Simulator is a Python-based biomedical simulation framework that models the electrical activity of the human heart and generates realistic 12-lead electrocardiograms (ECGs) under normal and pathological conditions. The simulator serves as both a:
+
+\begin{enumerate}
+    \item \textbf{Educational tool}: Teaching ECG interpretation and understanding cardiac electrophysiology
+    \item \textbf{Research platform}: Studying the relationship between conduction abnormalities and ECG morphology
+    \item \textbf{Clinical decision support}: Generating reference ECGs for various pathological states
+\end{enumerate}
+
+\section{Key Capabilities}
+
+The simulator can model the following clinical scenarios:
+
+\begin{itemize}
+    \item Normal sinus rhythm (NSR) at various heart rates
+    \item Atrial pathologies: atrial fibrillation, atrial flutter, atrial premature contractions
+    \item Atrioventricular (AV) conduction abnormalities: first-, second-, and third-degree AV blocks
+    \item Bundle branch blocks: right bundle branch block (RBBB), left bundle branch block (LBBB)
+    \item Ventricular arrhythmias: premature ventricular contractions (PVCs), ventricular tachycardia
+    \item Accessory pathway conduction: Wolff-Parkinson-White (WPW) syndrome
+    \item Sinus node dysfunction: sinus bradycardia, sinus tachycardia
+\end{itemize}
+
+\section{Development Phases}
+
+The project is organized into three phases:
+
+\subsection{Phase 1/2: Conduction Graph Engine}
+
+The Phase 1/2 implementation uses a \textbf{discrete conduction graph} model where:
+
+\begin{itemize}
+    \item The heart is represented as a directed graph of \textbf{nodes} (anatomical regions: SA node, RA, LA, AV node, His bundle, ventricular segments)
+    \item \textbf{Activation propagates} as breadth-first search (BFS) with physiological conduction velocities
+    \item Each node has fixed \textbf{activation delay} from the previous node
+    \item Refractory periods are \textbf{hardcoded} for each node
+    \item \textbf{ECG dipole contributions} from each node are modeled as Gaussian functions in time
+\end{itemize}
+
+\noindent \textbf{Advantages}:
+\begin{itemize}
+    \item Extremely fast (microseconds per step)
+    \item All pathologies implemented as parameter overrides
+    \item Clinically calibrated timing and morphology
+\end{itemize}
+
+\noindent \textbf{Limitations}:
+\begin{itemize}
+    \item Refractory period is an input, not emergent from dynamics
+    \item No continuous state evolution or tissue coupling
+\end{itemize}
+
+\subsection{Phase 3: FitzHugh-Nagumo Cable Engine}
+
+The Phase 3 implementation uses a \textbf{1-D monodomain FitzHugh-Nagumo cable} model where:
+
+\begin{itemize}
+    \item The conduction system is represented as a \textbf{linear chain of cells} (18 total)
+    \item Each cell solves the \textbf{FitzHugh-Nagumo ordinary differential equations} (ODEs)
+    \item Action potential (AP) propagates via \textbf{diffusion coupling} between adjacent cells
+    \item Refractory period \textbf{emerges} naturally from the slow recovery variable dynamics
+    \item \textbf{Multi-beat rhythm} requires no explicit pacemaker programming
+    \item ECG dipoles updated \textit{continuously} as the AP wavefront propagates
+\end{itemize}
+
+\noindent \textbf{Advantages}:
+\begin{itemize}
+    \item Emergent refractory period (no hardcoding)
+    \item Continuous state evolution (more physiologically faithful)
+    \item Can model effects of rate-dependent APD changes
+\end{itemize}
+
+\noindent \textbf{Limitations}:
+\begin{itemize}
+    \item Slower than Phase 1/2 (2.2$\times$ real-time on modern hardware)
+    \item Pathologies less developed (manual parameter override)
+    \item Timing requires careful calibration
+\end{itemize}
+
+\section{User-Selectable Engine}
+
+The user can switch between \phaseI and \phaseIII engines via a toolbar combo box. The switch:
+\begin{itemize}
+    \item Is seamless (pause current engine, swap, resume)
+    \item Reinitializes the new engine with current parameter values
+    \item Does not modify parameter settings
+\end{itemize}
+
+% ================================================================
+\chapter{Theoretical Foundations: Mathematical and Physical Models}
+% ================================================================
+
+\section{Cardiac Electrophysiology Primer}
+
+\subsection{The Action Potential}
+
+Every cardiac myocyte is electrically excitable. When stimulated, it generates an \textbf{action potential} (AP)---a stereotypical time-evolution of transmembrane voltage $V$ that drives heart contraction.
+
+\subsubsection{Phases of the Cardiac Action Potential}
+
+The AP has five distinct phases (Figure~\ref{fig:ap_phases}):
+
+\begin{figure}[H]
+    \centering
+    
+    \begin{center}
+    \texttt{[Diagram - text description in document]}
+    \end{center}
+    
+    \caption{Five phases of the cardiac action potential. Phase 0: rapid depolarization (inward $\text{Na}^+$ current). Phase 1: early repolarization (outward $\text{K}^+$ current). Phase 2: plateau (inward $\text{Ca}^{2+}$ current balances outward $\text{K}^+$). Phase 3: rapid repolarization. Phase 4: resting state.}
+    \label{fig:ap_phases}
+\end{figure}
+
+\noindent \textbf{Phase 0 (Depolarization)}: The membrane potential $V$ rapidly depolarizes from resting $V_{\text{rest}} \approx -90$ mV to peak $\approx +30$ mV due to rapid inward $\text{Na}^+$ current. This phase lasts $\approx 1$ ms.
+
+\noindent \textbf{Phase 1 (Early Repolarization)}: Brief outward $\text{K}^+$ current causes $V$ to decline slightly.
+
+\noindent \textbf{Phase 2 (Plateau)}: Inward $\text{Ca}^{2+}$ current balances outward $\text{K}^+$ current, maintaining $V \approx 0$ mV. This phase lasts $100$--$300$ ms depending on cell type and conditions.
+
+\noindent \textbf{Phase 3 (Late Repolarization)}: Dominant outward $\text{K}^+$ current repolarizes the cell back toward $V_{\text{rest}}$.
+
+\noindent \textbf{Phase 4 (Resting/Diastole)}: The cell remains at rest potential, ready for the next stimulus.
+
+\subsubsection{Refractoriness}
+
+During and immediately after an AP, the cell is \textbf{refractory}---it cannot be re-excited by an incoming stimulus:
+
+\begin{itemize}
+    \item \textbf{Absolute refractory period}: During phases 0--2 and early phase 3, $\text{Na}^+$ channels are inactivated; no re-stimulation possible.
+    \item \textbf{Relative refractory period}: Late phase 3, when $V$ is still below threshold. Re-stimulation is possible only with a \textbf{supernormal stimulus} (larger than normal).
+\end{itemize}
+
+The duration of refractoriness is roughly proportional to the AP duration (\textbf{APD}). Longer APD $\Rightarrow$ longer refractoriness.
+
+\subsection{Conduction Velocity}
+
+Electrical activation spreads from cell to cell via gap junctions (protein channels connecting adjacent myocytes). The speed of this propagation is the \textbf{conduction velocity} (CV):
+
+$$\text{CV} \approx 0.5 \sqrt{\frac{D}{\epsilon}} \cdot \frac{\text{dx}}{\text{cell time constant}}$$
+
+\noindent where:
+\begin{itemize}
+    \item $D$ is the diffusion coefficient (cytoplasmic resistivity)
+    \item $\epsilon$ is the excitability (inversely related to refractory period)
+    \item $\text{dx}$ is the cell size
+\end{itemize}
+
+Typical values in the heart:
+\begin{itemize}
+    \item Atrial myocardium: $0.5$--$1.0$ m/s
+    \item His-Purkinje system: $2$--$4$ m/s (high CV)
+    \item Ventricular myocardium: $0.3$--$0.5$ m/s
+    \item AV node: $0.02$--$0.05$ m/s (slowest, with programmed delay)
+\end{itemize}
+
+\section{ECG Generation: The Dipole Model}
+
+\subsection{Cardiac Electrical Dipole}
+
+At any instant, the heart has a net electrical dipole moment $\mathbf{p}(t)$ pointing from negative to positive charge:
+
+$$\mathbf{p}(t) = \sum_{\text{all myocytes}} q_i(t) \mathbf{r}_i$$
+
+\noindent where $q_i(t)$ is the charge state of myocyte $i$ at position $\mathbf{r}_i$.
+
+During the AP:
+\begin{itemize}
+    \item \textbf{Depolarization phase 0}: Wavefront of depolarization creates a dipole pointing from rest (negative) to depolarized (positive)
+    \item \textbf{Plateau phase 2}: Little dipole moment (most of heart is depolarized)
+    \item \textbf{Repolarization phase 3}: Wavefront of repolarization creates a dipole pointing from depolarized (negative) to rest (positive)
+\end{itemize}
+
+\subsection{12-Lead ECG and Lead Vectors}
+
+Each of the 12 ECG leads measures the projection of the cardiac dipole onto a fixed spatial direction called the \textbf{lead vector}.
+
+The 12 leads comprise:
+
+\begin{itemize}
+    \item \textbf{Limb leads}: I, II, III (measure frontal plane: left-right and inferior-superior)
+    \item \textbf{Augmented leads}: aVR, aVL, aVF (also frontal plane, normalized)
+    \item \textbf{Precordial leads}: V1--V6 (measure transverse plane: anterior-posterior and left-right)
+\end{itemize}
+
+Standard lead vectors (in mV per mV of dipole component) are fixed by convention and embedded in the simulator.
+
+\subsection{Gaussian Dipole Model}
+
+In this simulator, each anatomical node (e.g., RV, LV lateral) contributes to the ECG as a \textbf{time-localized dipole}:
+
+\begin{equation}
+\label{eq:dipole_gaussian}
+\mathbf{p}_{\text{node}}(t) = \mathbf{d}_{\text{node}} \left[ g_{\text{depol}}(t-t_{\text{act}}) + A_{\text{repol}} \, g_{\text{repol}}(t-t_{\text{act}}) \right]
+\end{equation}
+
+where:
+
+\begin{itemize}
+    \item $\mathbf{d}_{\text{node}}$ is the \textbf{dipole vector} (anatomy-specific, units: mV-m)
+    \item $t_{\text{act}}$ is the \textbf{activation time} (when the node first crossed threshold)
+    \item $g_{\text{depol}}(t)$ is the \textbf{depolarization Gaussian}: $g_d(t) = \exp\left(-\frac{t^2}{2\sigma_d^2}\right) \Theta(t)$ (active for $t > 0$)
+    \item $\sigma_d \approx 12.7$ ms (controls QRS width; Phase 1/2 value)
+    \item $g_{\text{repol}}(t)$ is the \textbf{repolarization Gaussian}: $g_r(t) = \exp\left(-\frac{(t-\tau_r)^2}{2\sigma_r^2}\right)$ (peaks at repolarization delay $\tau_r \approx 280$ ms)
+    \item $A_{\text{repol}} \approx -0.3$ (T-wave is opposite polarity to QRS)
+\end{itemize}
+
+The total \ecg voltage in lead $k$ is the sum over all nodes:
+
+\begin{equation}
+\label{eq:ecg_lead}
+\text{ECG}_k(t) = \sum_{\text{nodes}} \mathbf{L}_k \cdot \mathbf{p}_{\text{node}}(t)
+\end{equation}
+
+where $\mathbf{L}_k$ is the \textbf{lead vector} for lead $k$ (dimensionless, normalized).
+
+\section{\fhn Model (Phase 3)}
+
+\subsection{Biological Motivation}
+
+The \fhn model is a two-variable simplified model of the Hodgkin-Huxley equations that captures the essential fast-slow dynamics of cardiac action potentials without explicitly modeling individual ion channels.
+
+\subsection{The FitzHugh-Nagumo Equations}
+
+In normalized units, the 1-D cable equations are:
+
+\begin{align}
+\frac{\partial v}{\partial t} &= \frac{D}{\tau} \frac{\partial^2 v}{\partial x^2} + \frac{1}{\tau} \left( v - \frac{v^3}{3} - w + I_{\text{ext}} \right) \label{eq:fhn_v}\\
+\frac{\partial w}{\partial t} &= \frac{\varepsilon}{\tau} \left( v + a - b \cdot w \right) \label{eq:fhn_w}
+\end{align}
+
+where:
+
+\begin{itemize}
+    \item $v(x,t)$ is the \textbf{transmembrane voltage} (normalized: $-1.2 \le v \le 2$; unphysiological units for mathematical simplicity)
+    \item $w(x,t)$ is the \textbf{slow recovery variable} (models inactivation of inward current and activation of outward current)
+    \item $x$ is the position along the cable
+    \item $D$ is the \textbf{diffusion coefficient} (cell-to-cell coupling)
+    \item $\tau$ is the \textbf{physical time scale} (all times scale inversely with $\tau$)
+    \item $\varepsilon$ is the \textbf{time scale separation factor} (small $\varepsilon \Rightarrow$ slow $w$ recovery)
+    \item $a, b$ are constants ($a \approx 0.7$, $b \approx 0.8$)
+    \item $I_{\text{ext}}$ is external stimulus current (applied at specific locations during appropriate times)
+\end{itemize}
+
+\subsubsection{Fast-Slow Dynamics}
+
+The key insight is that $v$ evolves on the \textbf{fast timescale} $\sim \tau$, while $w$ evolves on the \textbf{slow timescale} $\sim \tau/\varepsilon$:
+
+\begin{itemize}
+    \item \textbf{Depolarization (Phase 0)}: $v$ rapidly increases as the depolarizing current dominates
+    \item \textbf{Plateau (Phase 2)}: $v$ is high, $w$ slowly increases, gradually opposing the depolarizing current
+    \item \textbf{Repolarization (Phase 3)}: Once $w$ is large enough, it repolarizes $v$ back toward rest
+    \item \textbf{Refractory period}: $w$ remains large, suppressing $v$ from re-depolarizing. As $w$ slowly decays, $v$ can eventually respond again
+\end{itemize}
+
+\subsubsection{Action Potential Duration}
+
+The AP duration (APD) is determined by the recovery timescale:
+
+$$\text{APD} \sim \frac{\tau}{\varepsilon \cdot b}$$
+
+For \phaseIII with $\tau = 15$ ms, $\varepsilon = 0.08$, $b = 0.8$:
+
+$$\tau_w = \frac{0.015}{0.08 \times 0.8} = 0.234 \text{ s} = 234 \text{ ms}$$
+
+This recovery time constant drives the refractoriness: ventricular cells take $\approx 234$ ms to fully recover. At 70 bpm (cycle length = 857 ms), a cell fires, then 857 ms later is stimulated again when it has recovered $857 / 234 \approx 91\%$ of the way. Multi-beat ECGs therefore emerge naturally.
+
+\subsection{Discretization: Monodomain Cable}
+
+The cable is discretized into $N_{\text{cells}}$ compartments. The Laplacian $\frac{\partial^2 v}{\partial x^2}$ is approximated by finite differences:
+
+$$\left.\frac{\partial^2 v}{\partial x^2}\right|_i \approx \frac{v_{i-1} - 2v_i + v_{i+1}}{\Delta x^2}$$
+
+with no-flux (Neumann) boundary conditions at the ends:
+
+$$v_0' = v_1 - v_0, \quad v_{N-1}' = v_{N-2} - v_{N-1}$$
+
+\subsection{Numerical Integration}
+
+The discretized system is integrated using explicit Euler with timestep $\Delta t = 0.1$ ms:
+
+\begin{align}
+v_i^{n+1} &= v_i^n + \Delta t \left[ \frac{D}{\Delta x^2 \tau}(v_{i-1}^n - 2v_i^n + v_{i+1}^n) + \frac{1}{\tau}(v_i^n - \frac{(v_i^n)^3}{3} - w_i^n + I_i^n) \right]\\
+w_i^{n+1} &= w_i^n + \Delta t \frac{\varepsilon}{\tau}(v_i^n + a - b \cdot w_i^n)
+\end{align}
+
+The CFL (Courant-Friedrichs-Lewy) stability condition requires:
+
+$$D \cdot \frac{\Delta t}{\tau \Delta x^2} \le 0.5$$
+
+For the current values ($D_{\text{max}} = 72$, $\Delta t = 0.1$ ms, $\tau = 15$ ms, $\Delta x = 1$):
+
+$$\text{CFL} = 72 \times \frac{0.0001}{0.015 \times 1^2} = 0.48 < 0.5 \quad \checkmark$$
+
+\section{Conduction Graph Model (Phase 1/2)}
+
+\subsection{Graph Structure}
+
+The heart is modeled as a directed acyclic graph (DAG) with fixed \textbf{nodes} (anatomical regions) and fixed \textbf{edges} (conduction pathways):
+
+\begin{equation}
+\text{Graph} = (V, E)
+\end{equation}
+
+where:
+
+\begin{itemize}
+    \item $V = \{\text{SA, RA, LA, AV node, His, LBB, RBB, SEPT, LV, RV, etc.}\}$ (13 nodes in total)
+    \item $E = \{(u,v): \text{activation can propagate from } u \text{ to } v\}$
+\end{itemize}
+
+\subsection{Activation Propagation}
+
+At each heartbeat, the \sa node fires, triggering a \textbf{breadth-first search (BFS)} wave propagation:
+
+\begin{algorithm}
+    \caption{Activation Propagation (BFS)}
+    \begin{enumerate}
+        \item Queue $\leftarrow$ [SA node]
+        \item Activation times $t_{\text{act}} \leftarrow$ {}
+        \item While Queue is not empty:
+        \begin{enumerate}
+            \item $u \leftarrow$ Dequeue
+            \item For each neighbor $v$ of $u$ in Graph:
+            \begin{enumerate}
+                \item If $v$ not yet activated:
+                \item Delay $\Delta t_{\text{edge}} \leftarrow$ conduction delay on edge $(u,v)$
+                \item Refractory check: if $(t_{\text{current}} - t_{\text{act}}[v]) \le$ refractory period of $v$, skip
+                \item Otherwise: $t_{\text{act}}[v] \leftarrow t_{\text{act}}[u] + \Delta t_{\text{edge}}$
+                \item Enqueue $v$
+            \end{enumerate}
+        \end{enumerate}
+    \end{enumerate}
+\end{algorithm}
+
+Each node has a \textbf{refractory period} (hardcoded, not emergent):
+
+\begin{itemize}
+    \item \sa, atrial nodes: $300$ ms (atrial refractoriness)
+    \item \av node: $300$ ms
+    \item Ventricular nodes: $250$ ms
+\end{itemize}
+
+The \textbf{conduction delay} on each edge is also fixed:
+
+\begin{itemize}
+    \item SA to RA: $0$ ms (instantaneous)
+    \item RA to LA: $100$ ms
+    \item LA to AV node: $50$ ms
+    \item AV node programmed delay: $100$ ms (controlled by parameter)
+    \item AV to His: $0$ ms
+    \item His to ventricular nodes: node-dependent ($0$--$50$ ms)
+\end{itemize}
+
+\subsection{Pathological Modifications}
+
+Pathologies are modeled by \textbf{dynamically modifying} the graph structure or conduction parameters:
+
+\begin{itemize}
+    \item \textbf{AV Block III°}: Remove all edges from LA to AV node
+    \item \textbf{RBBB}: Increase RBB conduction delay by $50$ ms
+    \item \textbf{Sinus bradycardia}: Increase SA cycle length
+    \item \textbf{Atrial fibrillation}: Replace BFS with chaotic re-entrant activation
+\end{itemize}
+
+% ================================================================
+\chapter{Implementation in Python: Core Modules and Functions}
+% ================================================================
+
+This chapter describes the Python implementation of all models in the simulator.
+
+\section{Project Directory Structure}
+
+\begin{lstlisting}
+cardiac_sim/
++-- core/                    # Core computation layer
+|   +-- cell_models/        # Ionic models (FHN, Aliev-Panfilov, etc.)
+|   +-- conduction/         # Conduction graph (Phase 1/2)
+|   +-- tissue/             # Cable model (Phase 3)
+|   +-- ecg/                # ECG generation (lead fields, dipoles)
+|   +-- interfaces.py       # Abstract base classes
+|   +-- parameter_model.py  # Parameter definitions and storage
+|   └-- simulation_worker.py # Worker thread for simulation loop
++-- simulation/             # High-level simulation engines
+|   +-- engine.py          # Abstract SimulationEngine
+|   +-- graph_engine.py    # Phase 1/2 implementation
+|   +-- cable_engine.py    # Phase 3 implementation
+|   └-- solver.py          # Numerical solvers (stub)
++-- gui/                    # PyQt6 GUI layer
+|   +-- main_window.py     # Main window, toolbar, layout
+|   +-- ecg_display.py     # ECG waveform plotter
+|   +-- parameter_panel.py # Parameters tree widget
+|   └-- pathology_panel.py # Pathology selector
++-- plugins/               # Pathology plug-in system
+|   +-- av_blocks.py       # AV block pathologies
+|   +-- bundle_blocks.py   # Bundle branch blocks
+|   +-- atrial.py          # Atrial pathologies
+|   +-- ventricular.py     # Ventricular pathologies
+|   └-- sinus_rhythms.py   # SA node disorders
+└-- main.py               # Application entry point
+\end{lstlisting}
+
+\section{Core Interfaces and Abstract Classes}
+
+\subsection{SimulationEngine Abstract Base Class}
+
+File: \texttt{cardiac\_sim/core/interfaces.py}
+
+\begin{lstlisting}
+class SimulationEngine(ABC):
+    @abstractmethod
+    def initialize(self, params: SimulationParameters) -> None:
+        """Initialize engine with parameters."""
+        pass
+    
+    @abstractmethod
+    def step(self, dt_s: float) -> ECGSample:
+        """Advance by dt_s seconds, return ECG sample."""
+        pass
+    
+    @abstractmethod
+    def apply_pathology(self, plugin: AbstractPathologyPlugin) -> None:
+        """Apply a pathological modification."""
+        pass
+    
+    @abstractmethod
+    def get_state(self) -> SimulationState:
+        """Get current simulation state (HR, timing, etc.)."""
+        pass
+\end{lstlisting}
+
+All engines (graph, cable) inherit from this abstract class and must implement all methods.
+
+\subsection{ECGSample and SimulationState Data Classes}
+
+\begin{lstlisting}
+@dataclass
+class ECGSample:
+    timestamp: float      # Current time in seconds
+    leads: np.ndarray    # Shape (12,) with voltages in mV
+    
+@dataclass
+class SimulationState:
+    time: float
+    heart_rate: float    # BPM
+    is_running: bool
+\end{lstlisting}
+
+\section{\phaseI Implementation: ConductionGraphEngine}
+
+File: \texttt{cardiac\_sim/simulation/graph\_engine.py} (≈ 400 lines)
+
+\subsection{Class Overview}
+
+\begin{lstlisting}
+class ConductionGraphEngine(SimulationEngine):
+    def __init__(self):
+        self._params: SimulationParameters = None
+        self._nodes: dict[str, ECGNode] = {}      # node name → node object
+        self._graph: dict[str, list[str]] = {}    # adjacency list
+        self._beat: BeatRecord = None             # current beat
+        self._time: float = 0.0
+        self._next_fire: float = 0.0              # next SA fire time
+    
+    def initialize(self, params: SimulationParameters) -> None:
+        self._params = params
+        self._nodes = _build_nodes()              # from conduction/graph.py
+        self._graph = build_physiological_graph()
+        self._reset()
+    
+    def step(self, dt_s: float) -> ECGSample:
+        self._time += dt_s
+        
+        # Check if SA should fire (based on HR)
+        if self._time >= self._next_fire:
+            self._fire_sa()
+        
+        # Compute ECG from active beat
+        ecg = self._compute_ecg(self._time)
+        return ECGSample(timestamp=self._time, leads=ecg)
+    
+    def _fire_sa(self) -> None:
+        # BFS propagation from SA node
+        self._beat = self._run_bfs()
+        self._next_fire += self._params.sa_node.cycle_length_ms / 1000.0
+    
+    def _run_bfs(self) -> BeatRecord:
+        # Breadth-first search to compute activation times
+        # Returns a BeatRecord with all node activation times
+        ...
+    
+    def _compute_ecg(self, t_s: float) -> np.ndarray:
+        # Sum Gaussian dipoles from all active nodes
+        ...
+\end{lstlisting}
+
+\subsection{Key Functions}
+
+\subsubsection{\texttt{\_build\_nodes} and \texttt{build\_physiological\_graph}}
+
+File: \texttt{cardiac\_sim/core/conduction/graph.py}
+
+These functions construct the fixed conduction graph and node parameters:
+
+\begin{lstlisting}
+def _build_nodes() -> dict[str, ECGNode]:
+    """Return dict of anatomical nodes with ECG dipole parameters."""
+    nodes = {
+        "SA_NODE": ECGNode(
+            dipole_vector=[-1.0, 0.5, 0.2],  # mV-m, normalized
+            depol_duration=0.010,              # 10 ms Gaussian width
+            repol_delay=0.280,                 # T-wave peaks at 280 ms
+            repol_duration=0.030,
+            repol_amplitude=-0.3
+        ),
+        "RA": ECGNode(...),  # Right atrial myocardium
+        "LA": ECGNode(...),  # Left atrial myocardium
+        # ... (10 more nodes)
+    }
+    return nodes
+
+def build_physiological_graph() -> dict[str, list[str]]:
+    """Return adjacency list of conduction pathways."""
+    return {
+        "SA_NODE": ["RA"],
+        "RA": ["LA", "AV_NODE"],
+        "LA": ["AV_NODE"],
+        "AV_NODE": ["HIS"],
+        "HIS": ["LBB", "RBB", "SEPT_EARLY"],
+        # ... (more edges)
+    }
+\end{lstlisting}
+
+\subsubsection{\texttt{\_compute\_ecg}}
+
+Sums Gaussian dipoles (Eq.~\ref{eq:dipole_gaussian}) over all nodes:
+
+\begin{lstlisting}
+def _compute_ecg(self, t_s: float) -> np.ndarray:
+    dipole_total = np.zeros(3)  # 3D dipole vector
+    
+    if self._beat is not None:
+        for node_name, t_act in self._beat.activation_times.items():
+            node = self._nodes[node_name]
+            
+            # Depolarization Gaussian
+            g_depol = np.exp(-(t_s - t_act)**2 / (2 * node.depol_duration**2))
+            if t_s < t_act:
+                g_depol = 0
+            
+            # Repolarization Gaussian (peaks at t_act + repol_delay)
+            t_repol_peak = t_act + node.repol_delay
+            g_repol = np.exp(-(t_s - t_repol_peak)**2 / (2 * node.repol_duration**2))
+            
+            # Total dipole contribution
+            dipole = node.dipole_vector * (g_depol - node.repol_amplitude * g_repol)
+            dipole_total += dipole
+    
+    # Project onto 12 lead vectors
+    ecg_12lead = self._lead_field.project(dipole_total)  # shape (12,)
+    return ecg_12lead
+\end{lstlisting}
+
+\section{\phaseIII Implementation: ConductionCableEngine}
+
+File: \texttt{cardiac\_sim/simulation/cable\_engine.py} (≈ 450 lines)
+
+\subsection{Class Overview}
+
+\begin{lstlisting}
+class ConductionCableEngine(SimulationEngine):
+    def __init__(self):
+        self._cable: ConductionCable1D = None  # 1-D FHN cable
+        self._nodes: dict[str, ECGNode] = {}   # modified depol_duration
+        self._params: SimulationParameters = None
+        self._time: float = 0.0
+        self._next_sa_fire: float = 0.0
+        self._active_beats: list[BeatRecord] = []
+        self._beat_in_progress: bool = False
+        self._current_beat_nodes: dict[str, float] = {}
+    
+    def initialize(self, params: SimulationParameters) -> None:
+        self._params = params
+        self._cable = ConductionCable1D(params)
+        self._nodes = _build_cable_nodes()  # adjusted Gaussians
+        self._time = 0.0
+    
+    def step(self, dt_s: float) -> ECGSample:
+        self._time += dt_s
+        
+        # SA pacemaker
+        if self._time >= self._next_sa_fire:
+            self._fire_sa()
+        
+        # Always advance cable (to keep internal clock synchronized)
+        newly = self._cable.advance(dt_s)
+        
+        # If beat in progress, collect nodes as they activate
+        if self._beat_in_progress:
+            for node, t_act in newly.items():
+                if node not in self._current_beat_nodes:
+                    self._current_beat_nodes[node] = t_act
+                    # KEY FIX: update active beat immediately so ECG
+                    # renders the QRS at activation time, not at commit
+                    if self._active_beats:
+                        self._active_beats[-1].activation_times[node] = t_act
+            
+            # Commit beat when done
+            ... (beat completion logic)
+        
+        # Compute ECG from all active beats
+        ecg = self._compute_ecg(self._time)
+        return ECGSample(timestamp=self._time, leads=ecg)
+\end{lstlisting}
+
+\subsection{Cable Propagation: ConductionCable1D}
+
+File: \texttt{cardiac\_sim/core/tissue/cable\_1d.py} (≈ 500 lines)
+
+\subsubsection{Class Overview and Fixed Parameters}
+
+\begin{lstlisting}
+# Fixed FHN model parameters (Phase 3-D calibrated)
+_A   = 0.700     # FHN parameter a
+_B   = 0.800     # FHN parameter b
+_EPS = 0.080     # recovery rate
+_TAU = 0.015     # time scale (15 ms for correct PR/QRS timing)
+
+_DT_INT = 0.0001 # internal micro-step (0.1 ms)
+
+# Cable structure
+_NA = 8          # atrial cells (SA + 7)
+_NV = 10         # ventricular cells (His + LBB(3) + LV(6))
+
+# Diffusion coefficients
+_D_ATR = np.array([0.0, 2.88, 2.88, 2.88, 2.88, 2.88, 2.88, 2.88])
+_D_VEN = np.array([0.0, 72.0, 72.0, 72.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0])
+
+# Stimulus
+_STIM_AMP = 1.5  # suprathreshold current
+_STIM_DUR = 0.010 # 10 ms
+
+class ConductionCable1D:
+    def __init__(self, params: SimulationParameters):
+        self._sa: np.ndarray = np.empty((_NA, 2))  # (cells, [v, w])
+        self._sv: np.ndarray = np.empty((_NV, 2))
+        self._t: float = 0.0
+        self._check_cfl()
+    
+    def new_beat(self, sa_fire_time: float, params: SimulationParameters) -> None:
+        """Reset for a new beat at sa_fire_time."""
+        self._t = sa_fire_time
+        self._stim_end_a = sa_fire_time + _STIM_DUR
+        self._av_pending_at = math.inf
+        # Reset activation trackers
+        self._t_act_a[:] = math.inf
+        self._t_act_v[:] = math.inf
+        self._t_act_a[0] = sa_fire_time
+    
+    def advance(self, dt_s: float) -> dict[str, float]:
+        """Integrate by dt_s seconds, return newly activated nodes."""
+        n_micro = max(1, round(dt_s / _DT_INT))
+        dt_micro = dt_s / n_micro
+        newly: dict[str, float] = {}
+        
+        for _ in range(n_micro):
+            self._t += dt_micro
+            self._step_atrial(dt_micro)
+            self._step_ventricular(dt_micro)
+            
+            # Check for threshold crossings
+            for node, (i0, i1) in _ATR_SEGS.items():
+                # (threshold detection logic)
+                ...
+            
+            for node, (i0, i1) in _VEN_SEGS.items():
+                # (threshold detection logic)
+                ...
+        
+        return newly
+    
+    def _step_atrial(self, dt: float) -> None:
+        """One FHN Euler step on atrial cable."""
+        V = np.ascontiguousarray(self._sa[:, 0])
+        W = np.ascontiguousarray(self._sa[:, 1])
+        I = np.zeros(_NA)
+        if self._t < self._stim_end_a:
+            I[0] = _STIM_AMP
+        V_new, W_new = _fhn_cable_step(V, W, _D_ATR, I, dt, _TAU, _A, _B, _EPS)
+        self._sa[:, 0] = V_new
+        self._sa[:, 1] = W_new
+\end{lstlisting}
+
+\subsubsection{Numerical Integration: \texttt{\_fhn\_cable\_step}}
+
+File: \texttt{cardiac\_sim/core/tissue/cable\_1d.py}
+
+\begin{lstlisting}
+def _fhn_cable_step(V, W, D, I_ext, dt, tau_s, a, b, eps):
+    """Single explicit Euler step for FHN cable.
+    
+    Implements equations (1) and (2) with finite-difference Laplacian.
+    """
+    # Compute Laplacian with no-flux BCs
+    lap = np.empty_like(V)
+    lap[1:-1] = V[:-2] - 2.0 * V[1:-1] + V[2:]
+    lap[0]    = V[1] - V[0]
+    lap[-1]   = V[-2] - V[-1]
+    
+    inv_tau = 1.0 / tau_s
+    dv = (D * lap + V - V**3 / 3.0 - W + I_ext) * inv_tau
+    dw = eps * (V + a - b * W) * inv_tau
+    
+    return V + dt * dv, W + dt * dw
+\end{lstlisting}
+
+This function is Numba-JIT compilable (if compatible NumPy version) for 10-20$\times$ speedup.
+
+\end{document}

@@ -1,0 +1,373 @@
+\documentclass[11pt, a4paper]{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage[margin=1in]{geometry}
+\usepackage{fancyhdr}
+\usepackage{booktabs}
+\usepackage{tabularx}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray},
+    breaklines=true,
+    language=Python
+}
+
+\title{ECG Simulator Documentation\\Part 6: System Architecture \& Design}
+\author{Module Organization, Class Hierarchy, Extension Points}
+\date{June 2026}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Part 6: Architecture}
+\lhead{ECG Simulator}
+\cfoot{\thepage}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Three-Layer Architecture}
+
+\subsection{Overview}
+The ECG simulator is organized into three distinct layers:
+
+\begin{enumerate}
+    \item \textbf{Physics Layer}: Cardiac physiology (cell models, propagation, dipoles)
+    \item \textbf{Simulation Layer}: Algorithm selection (Phase 1/2 vs Phase 3), beat management
+    \item \textbf{GUI Layer}: PyQt6 interface, real-time visualization, parameter control
+\end{enumerate}
+
+\subsection{Layer Interaction}
+
+\begin{verbatim}
+GUI Layer (main_window.py, parameter_panel.py)
+    |
+    | controls
+    |
+Simulation Layer (graph_engine.py, cable_engine.py)
+    |
+    | uses
+    |
+Physics Layer (cell_models/, tissue/, ecg/)
+\end{verbatim}
+
+\subsection{Data Flow}
+\begin{enumerate}
+    \item User adjusts HR or parameters in GUI
+    \item GUI updates ParameterModel (single source of truth)
+    \item SimulationEngine queries ParameterModel for each beat
+    \item Engine executes propagation algorithm
+    \item Forward model computes 12-lead ECG voltages
+    \item GUI displays voltages on pyqtgraph widget
+\end{enumerate}
+
+\section{Physics Layer (Core Modules)}
+
+\subsection{Module Organization}
+
+\begin{tabularx}{\textwidth}{|l|X|c|}
+\hline
+\textbf{Module} & \textbf{Purpose} & \textbf{Lines} \\
+\hline
+cardiac\_sim/core/cell\_models/fitzhugh\_nagumo.py & FHN cell model ODEs & 150 \\
+cardiac\_sim/core/tissue/cable\_1d.py & 1-D monodomain integration & 500 \\
+cardiac\_sim/core/tissue/graph.py & DAG + BFS conduction & 350 \\
+cardiac\_sim/core/ecg/lead\_field.py & 12-lead lead vectors & 150 \\
+\hline
+\end{tabularx}
+
+\subsection{Class Hierarchy: Cell Models}
+
+\begin{verbatim}
+BaseCellModel (abstract)
+    ├── FitzHughNagumoCell
+    └── [Future: HodgkinHuxley, Courtemanche, tenTusscher]
+
+Key Methods:
+  - get_initial_state()
+  - compute_derivatives(t, state)
+  - stimulate(t_start, duration, amplitude)
+  - v_to_mv(v_norm, v_rest, v_peak)
+\end{verbatim}
+
+\subsubsection{FitzHughNagumoCell Interface}
+
+\begin{lstlisting}
+class FitzHughNagumoCell(BaseCellModel):
+    def get_initial_state(self) -> np.ndarray:
+        # Returns [V_REST, W_REST]
+        return np.array([-1.200, -0.625])
+    
+    def compute_derivatives(self, t, state):
+        # Solves dimensionless FHN ODEs
+        # Scales to physical time via TAU_S
+        v, w = state
+        dv = v - v**3/3 - w + I_ext
+        dw = self.eps * (v + self.a - self.b * w)
+        return np.array([dv, dw])
+    
+    def v_to_mv(self, v_norm, v_rest, v_peak):
+        # Maps [-1.2, 2.0] → [-85, +30] mV
+        return v_rest + (v_peak - v_rest) * \
+               (v_norm - self.V_REST) / (self.V_PEAK - self.V_REST)
+\end{lstlisting}
+
+\subsection{Cable Model (1-D Tissue)}
+
+\begin{lstlisting}
+class Cable1D:
+    def __init__(self, params):
+        # Initialize V, W state arrays (18 cells)
+        self.V = np.ones(18) * self.V_REST
+        self.W = np.ones(18) * self.W_REST
+        self._check_cfl()
+    
+    def new_beat(self, sa_fire_time, params):
+        # Reset state, mark SA activated
+        self.V.fill(self.V_REST)
+        self.W.fill(self.W_REST)
+        self._active_beat_start = sa_fire_time
+    
+    def advance(self, dt):
+        # Integrate dt seconds via n_micro steps
+        # Returns dict of newly activated nodes
+        for _ in range(n_micro):
+            self._step_atrial(DT_INT)
+            self._step_ventricular(DT_INT)
+        return newly_activated_dict
+\end{lstlisting}
+
+\section{Simulation Layer}
+
+\subsection{SimulationEngine Interface}
+
+\begin{verbatim}
+SimulationEngine (abstract)
+    ├── GraphEngine (Phase 1/2: BFS-based)
+    └── CableEngine (Phase 3: FHN cable)
+
+Key Methods:
+  - generate_beat(hr, params) -> dict[node -> t_act]
+  - get_activation_times() -> dict
+  - advance_time(dt)
+\end{verbatim}
+
+\subsection{GraphEngine (Phase 1/2)}
+
+\begin{verbatim}
+BFS Algorithm:
+1. Start queue with SA node (t=0)
+2. For each node:
+   a. Compute conduction time to each neighbor
+   b. Check if neighbor is refractory
+   c. If NOT refractory: add to queue with new activation time
+   d. If refractory: skip
+3. Return dict[node -> activation_time] for entire beat
+
+Refractory Check:
+  t_candidate = t_current + conduction_time
+  if t_candidate < last_activation[node] + ERP[node]:
+      # Skip (still refractory)
+  else:
+      # Conduct
+\end{verbatim}
+
+\subsubsection{Key Implementation Details}
+
+\begin{lstlisting}
+def run_bfs(self, sa_fire_time, params):
+    activation_times = {}
+    queue = deque([(SA_NODE, sa_fire_time)])
+    
+    while queue:
+        current_node, t_curr = queue.popleft()
+        activation_times[current_node] = t_curr
+        
+        # Find refractory status
+        last_act = self._last_activation.get(current_node, -inf)
+        if t_curr < last_act + ERP[current_node]:
+            continue  # Skip if still refractory
+        
+        # Process neighbors
+        for neighbor, cond_time in self.adjacency[current_node]:
+            t_next = t_curr + cond_time
+            queue.append((neighbor, t_next))
+    
+    return activation_times
+\end{lstlisting}
+
+\subsection{CableEngine (Phase 3)}
+
+\begin{verbatim}
+Phase 3: FHN Cable Integration
+1. Initialize 18-cell cable (8 atrial + 10 ventricular)
+2. Stimulate SA node at t=sa_fire_time
+3. Advance cable.advance(dt) every 33 ms
+4. Cable returns dict of newly activated nodes
+5. Accumulate activation times incrementally
+6. Compute dipole moments from activation_times
+7. Project to 12 leads
+
+Architecture:
+  - _cable: Cable1D object (manages state V, W)
+  - _active_beats: List of BeatRecord objects
+  - _current_beat_nodes: Dict tracking activated nodes per beat
+  - _nodes: 18 ECGNode objects (anatomical positions)
+  - _forward_model: LeadField for projection
+\end{verbatim}
+
+\section{GUI Layer}
+
+\subsection{PyQt6 Widget Hierarchy}
+
+\begin{verbatim}
+MainWindow (QMainWindow)
+    ├── ControlPanel (QWidget)
+    │   ├── HR Spinner (QSpinBox)
+    │   ├── Engine Selector (QComboBox)
+    │   ├── Control Buttons (QPushButton)
+    │   └── Display Label (QLabel)
+    ├── ECGDisplay (PlotWidget from pyqtgraph)
+    │   └── 12 curves (one per lead)
+    └── ParameterPanel (QScrollArea)
+        ├── SANodeGroup (QGroupBox)
+        ├── AVNodeGroup (QGroupBox)
+        ├── ... (12 groups total)
+        └── ApplyButton (QPushButton)
+\end{verbatim}
+
+\subsection{Signal/Slot Architecture}
+
+\begin{lstlisting}
+# User changes HR spinbox
+spinbox.valueChanged.connect(self.on_hr_changed)
+
+def on_hr_changed(self, new_hr):
+    self.params.sa.cycle_length = 60 / new_hr
+    # Changes take effect on next beat
+
+# Timer updates ECG display
+self.timer.timeout.connect(self.update_display)
+
+def update_display(self):
+    # Advance simulation
+    self.engine.advance(DT_FRAME)
+    
+    # Get ECG voltages
+    ecg_data = self.engine.get_ecg_data()
+    
+    # Update all 12 curves
+    for i, lead in enumerate(self.leads):
+        self.plot.getPlotItem().curves[i].setData(ecg_data[i])
+\end{lstlisting}
+
+\section{Plugin System}
+
+\subsection{Plugin Architecture}
+
+\begin{verbatim}
+PluginBase (abstract)
+    ├── StaticPlugin (cached, whole-beat effect)
+    └── StatefulPlugin (per-beat, temporary override)
+
+Stacking Mechanism:
+1. Phase 1/2 BFS algorithm runs
+2. For each plugin in stack:
+   - Modify activation_times dict or conductances
+   - Can disable regions (set conductance → 0)
+   - Can prolong refractories
+3. Result: Composite arrhythmia
+\end{verbatim}
+
+\subsection{Available Plugins}
+
+\begin{tabularx}{\textwidth}{|l|X|}
+\hline
+\textbf{Plugin} & \textbf{Mechanism} \\
+\hline
+AVBlockI & Prolong av\_delay \\
+AVBlockII\_Mobitz1 & Reduce av\_conductance gradually \\
+AVBlockII\_Mobitz2 & Reduce his\_conductance abruptly \\
+AVBlockIII & Set av\_conductance → 0 \\
+LBBB & Set lbb\_conductance → 0 \\
+RBBB & Set rbb\_conductance → 0 \\
+LAHB & Set lahb\_conductance → 0 \\
+LPHB & Set lphb\_conductance → 0 \\
+AF & Insert fibrillatory waves into atrial rate \\
+PVC & Inject ectopic stimulus at coupling interval \\
+Sinus Bradycardia & Increase sa cycle\_length \\
+\hline
+\end{tabularx}
+
+\section{Data Flow Example: Normal Beat}
+
+\begin{enumerate}
+    \item User sets HR = 70 bpm
+    \item GUI calculates cycle\_length = 60/70 ≈ 0.857 s
+    \item Timer tick at t=0: SA fires
+    \item BFS/Cable propagates: SA → RA (124 ms) → LA (191 ms) → AV (307 ms) → His (435 ms) → LV (645 ms)
+    \item Dipole computation for each region
+    \item Lead field projection: 18-D position vector → 12-lead voltages
+    \item Display updates all 12 curves
+    \item Next cycle_length: SA fires again
+\end{enumerate}
+
+\section{Performance Characteristics}
+
+\subsection{Computational Complexity}
+
+\begin{tabularx}{\textwidth}{|l|c|c|}
+\hline
+\textbf{Engine} & \textbf{BFS Complexity} & \textbf{Actual Rate} \\
+\hline
+Phase 1/2 & O(V + E) = O(18 + edges) & >1000 Hz \\
+Phase 3 & O(N_cells × N\_steps) & 2.2× real-time \\
+\hline
+\end{tabularx}
+
+\subsection{Memory Usage}
+
+\begin{itemize}
+    \item State arrays: ~18 cells × 2 variables (V, W) × 8 bytes = 288 bytes
+    \item ECG buffer: ~10 seconds × 30 FPS × 12 leads × 8 bytes = 28.8 KB
+    \item Activation times: ~18 nodes × 100 beats × 8 bytes = 14.4 KB
+    \item Total: <100 MB for typical 1-hour simulation
+\end{itemize}
+
+\section{Extension Points}
+
+\subsection{Adding a New Cell Model}
+
+\begin{enumerate}
+    \item Create subclass of BaseCellModel
+    \item Implement: get\_initial\_state(), compute\_derivatives()
+    \item Add to cable\_1d.py imports
+    \item Update engine selector to include new model
+\end{enumerate}
+
+\subsection{Adding a New Plugin}
+
+\begin{enumerate}
+    \item Create class inheriting PluginBase
+    \item Implement: apply() method (modifies activation times or conductances)
+    \item Register in plugin manager
+    \item Add to GUI parameter panel
+\end{enumerate}
+
+\subsection{Adding a New Lead Vector}
+
+\begin{enumerate}
+    \item Define unit vector (X, Y, Z) in cardiac coordinate system
+    \item Add to LEAD\_MATRIX in lead\_field.py
+    \item Update lead names list
+    \item GUI automatically includes in display
+\end{enumerate}
+
+\end{document}
