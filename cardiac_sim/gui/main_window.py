@@ -226,11 +226,14 @@ class MainWindow(QMainWindow):
         if state.is_running:
             sa_hr = state.heart_rate
             vent_hr = state.ventricular_rate
+            axis_class = state.cardiac_axis_classification
+            axis_deg = state.cardiac_axis_degrees
             t = state.time
             sa_text = f"{sa_hr:.0f} bpm" if sa_hr > 0 else "—"
             vent_text = f"{vent_hr:.0f} bpm" if vent_hr > 0 else "—"
             self._status_label.setText(
-                f"  SA: {sa_text}  |  QRS: {vent_text}  |  t = {t:.1f} s"
+                f"  SA: {sa_text}  |  QRS: {vent_text}  |  "
+                f"Axis: {axis_deg:.0f}° ({axis_class})  |  t = {t:.1f} s"
             )
         else:
             self._status_label.setText("  Stopped.")

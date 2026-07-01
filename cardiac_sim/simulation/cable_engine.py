@@ -60,7 +60,8 @@ from cardiac_sim.core.conduction.graph import (
     _build_nodes,
     build_physiological_graph,
 )
-from cardiac_sim.core.ecg.lead_field import LeadFieldForwardModel
+from cardiac_sim.core.ecg.lead_field import LeadFieldForwardModel, LEAD_NAMES
+from cardiac_sim.core.ecg.axis_analyzer import CardiacAxisAnalyzer
 from cardiac_sim.core.interfaces import (
     AbstractPathologyPlugin,
     AbstractStatefulPathologyPlugin,
@@ -163,6 +164,14 @@ class ConductionCableEngine(SimulationEngine):
         self._detected_qrs_rr: float = 0.857  # RR from detected peaks
         self._last_buffer_index_checked: int = 0  # avoid re-scanning old samples
 
+        # Cardiac electrical axis analyzer
+        # ─────────────────────────────────────────────────────────
+        self._axis_analyzer = CardiacAxisAnalyzer(
+            sample_rate_hz=500.0  # Will be updated in initialize()
+        )
+        self._axis_analysis_counter: int = 0
+        self._axis_analysis_interval: int = 50  # Analyze every ~100 ms at 500 Hz
+
         # Beat accumulator: collects cable outputs over the current beat
         self._current_beat_nodes: dict[str, float] = {}
         self._beat_in_progress: bool = False
@@ -199,6 +208,10 @@ class ConductionCableEngine(SimulationEngine):
             self._cable = ConductionCable1D(params)
             self._current_beat_nodes.clear()
             self._beat_in_progress = False
+            
+            # Reset cardiac axis analyzer
+            self._axis_analyzer.reset()
+            self._axis_analysis_counter = 0
 
         logger.info("ConductionCableEngine initialised.")
 
@@ -261,8 +274,21 @@ class ConductionCableEngine(SimulationEngine):
             # Store ECG sample for QRS detection (lead II is index 1)
             self._ecg_buffer.append((self._time, float(ecg[1])))
             
+            # Feed ECG to axis analyzer (leads I=index 0, aVF=index 5)
+            self._axis_analyzer.add_ecg_sample(
+                self._time,
+                float(ecg[0]),      # Lead I
+                float(ecg[5]),      # Lead aVF
+            )
+            
             # Detect QRS peaks in the trace
             self._detect_qrs_peaks()
+            
+            # Perform cardiac axis analysis periodically
+            self._axis_analysis_counter += 1
+            if self._axis_analysis_counter >= self._axis_analysis_interval:
+                self._axis_analysis_counter = 0
+                # Analysis is performed, result will be used in get_state()
 
         return ECGSample(timestamp=self._time, leads=ecg)
 
@@ -338,7 +364,18 @@ class ConductionCableEngine(SimulationEngine):
             hr = 60.0 / self._last_rr if self._last_rr > 0.0 else 0.0
             # Use detected QRS rate (from actual ECG peaks) rather than mechanism-based rate
             vr = 60.0 / self._detected_qrs_rr if self._detected_qrs_rr > 0.0 else 0.0
-            return SimulationState(time=self._time, heart_rate=hr, ventricular_rate=vr, is_running=True)
+            
+            # Perform cardiac axis analysis
+            axis_result = self._axis_analyzer.analyze()
+            
+            return SimulationState(
+                time=self._time,
+                heart_rate=hr,
+                ventricular_rate=vr,
+                cardiac_axis_degrees=axis_result.angle_degrees,
+                cardiac_axis_classification=axis_result.classification,
+                is_running=True,
+            )
 
     def apply_pathology(self, plugin: AbstractPathologyPlugin) -> None:
         with self._lock:

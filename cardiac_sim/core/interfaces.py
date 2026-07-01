@@ -56,6 +56,12 @@ class SimulationState:
     ventricular_rate: float = 60.0
     """Actual ventricular rate based on QRS complexes [bpm]."""
 
+    cardiac_axis_degrees: float = 0.0
+    """Cardiac electrical axis in degrees (-180 to +180). 0 before first analysis."""
+
+    cardiac_axis_classification: str = "Undetermined"
+    """Lagetyp classification (e.g., 'Indifferenztyp', 'Linkstyp', etc.)."""
+
     is_running: bool = False
 
 
