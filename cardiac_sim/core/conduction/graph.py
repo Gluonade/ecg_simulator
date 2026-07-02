@@ -41,6 +41,39 @@ logger = logging.getLogger(__name__)
 _NEG_INF = float("-inf")
 _MAX_DELAY_MULTIPLIER = 10.0  # cap on effective delay to avoid numerical issues
 
+# ---------------------------------------------------------------------------
+# Conduction "route" classes — determine downstream ECG morphology.
+# ---------------------------------------------------------------------------
+# The class of the *earliest-arriving* wavefront that reaches a node sets that
+# node's waveform morphology in the ECG engine:
+#
+# * ANTEGRADE — normal forward His-Purkinje conduction. Narrow, concordant.
+# * BUNDLE     — working-myocardium retrograde spread from the *contralateral*
+#                bundle (LBBB / RBBB backup). Broad, slurred QRS + discordant T.
+# * HEMIBLOCK  — intra-LV *fascicular* re-routing (LAHB / LPHB backup). The
+#                re-routed segment is only mildly delayed/broadened and keeps a
+#                concordant T wave. Crucially, a hemiblock must stay bounded and
+#                never converge to a full bundle-branch-block morphology, no
+#                matter how severe the fascicular conductance reduction — the
+#                intact fascicle and His bundle still activate the LV.
+#
+# Severity ordering (BUNDLE > HEMIBLOCK > ANTEGRADE) is used when propagating a
+# route through the graph: a node inherits the most severe class on its path.
+ROUTE_ANTEGRADE = "antegrade"
+ROUTE_BUNDLE = "bundle"
+ROUTE_HEMIBLOCK = "hemiblock"
+
+_ROUTE_SEVERITY = {
+    ROUTE_ANTEGRADE: 0,
+    ROUTE_HEMIBLOCK: 1,
+    ROUTE_BUNDLE: 2,
+}
+
+# Delay of the RBBB backup path (LV_ANT → RV, slow trans-septal cell-to-cell
+# spread). Long enough that the right ventricle depolarises clearly *after* the
+# left, producing a terminal R' (V1) / slurred S (I, V6) and a QRS > 120 ms.
+RBBB_RETRO_DELAY_S = 0.100
+
 
 @dataclass
 class ConductionEdge:
@@ -50,10 +83,15 @@ class ConductionEdge:
     target: str
     base_delay: float   # nominal conduction delay [s]
     conductance: float  # 1 = normal, 0 = complete block, <1 = slowed
-    is_retrograde: bool = False
-    """True for working-myocardium backup paths (RV↔LV, hemiblock bypasses).
-    Nodes activated via these edges receive broad Gaussians and discordant
-    T waves in the ECG computation.
+    route: str = ROUTE_ANTEGRADE
+    """Conduction class of this pathway (see the ``ROUTE_*`` constants).
+
+    * ``ROUTE_ANTEGRADE`` — normal forward conduction.
+    * ``ROUTE_BUNDLE`` — working-myocardium backup from the contralateral bundle
+      (RV↔LV). Downstream nodes get broad Gaussians and discordant T waves.
+    * ``ROUTE_HEMIBLOCK`` — intra-LV fascicular re-routing (LV_ANT↔LV_INF).
+      Downstream nodes get only mild broadening and keep a concordant T wave, so
+      a severe fascicular block stays a hemiblock instead of turning into LBBB.
     """
 
 
@@ -83,7 +121,7 @@ class ConductionGraph:
         start_time: float,
         last_activation: dict[str, float] | None = None,
         start_node: str = "SA_NODE",
-    ) -> tuple[dict[str, float], frozenset[str]]:
+    ) -> tuple[dict[str, float], frozenset[str], frozenset[str]]:
         """
         BFS from *start_node* to compute each node's activation time for one beat.
 
@@ -101,21 +139,29 @@ class ConductionGraph:
 
         Returns
         -------
-        tuple[dict[str, float], frozenset[str]]
-            ``(activation_times, retrograde_nodes)`` where
-            ``retrograde_nodes`` is the set of nodes whose first activation
-            arrived via a retrograde edge OR via a node that was itself
-            retrograde (transitive propagation).  These nodes receive broad,
-            slurred Gaussian waveforms and discordant T waves in the ECG.
+        tuple[dict[str, float], frozenset[str], frozenset[str]]
+            ``(activation_times, retrograde_nodes, hemiblock_nodes)``.
+
+            Each node is classified by the conduction *route* of its
+            earliest-arriving wavefront (the most severe route encountered on
+            that path — see the ``ROUTE_*`` constants):
+
+            * ``retrograde_nodes`` — reached via a ``ROUTE_BUNDLE`` edge
+              (LBBB/RBBB backup) or downstream of such a node. Rendered with
+              broad, slurred Gaussians and discordant T waves.
+            * ``hemiblock_nodes`` — reached via a ``ROUTE_HEMIBLOCK`` edge
+              (LAHB/LPHB fascicular re-routing) or downstream of such a node,
+              and *not* also bundle-retrograde. Rendered with only mild
+              broadening and a concordant T wave, keeping a hemiblock bounded.
         """
         activation_times: dict[str, float] = {}
-        retrograde_nodes: set[str] = set()
-        # Queue items: (node_name, activation_time, is_in_retrograde_chain)
-        queue: deque[tuple[str, float, bool]] = deque()
-        queue.append((start_node, start_time, False))
+        node_route: dict[str, str] = {}
+        # Queue items: (node_name, activation_time, path_route)
+        queue: deque[tuple[str, float, str]] = deque()
+        queue.append((start_node, start_time, ROUTE_ANTEGRADE))
 
         while queue:
-            node_name, t_activate, via_retrograde = queue.popleft()
+            node_name, t_activate, path_route = queue.popleft()
 
             # If reached by multiple paths, keep the earliest arrival
             if node_name in activation_times:
@@ -131,8 +177,7 @@ class ConductionGraph:
                         continue   # still refractory — block propagation
 
             activation_times[node_name] = t_activate
-            if via_retrograde:
-                retrograde_nodes.add(node_name)
+            node_route[node_name] = path_route
 
             for edge in self._adj.get(node_name, []):
                 if edge.conductance <= 0.0:
@@ -140,11 +185,23 @@ class ConductionGraph:
 
                 factor = min(1.0 / edge.conductance, _MAX_DELAY_MULTIPLIER)
                 effective_delay = edge.base_delay * factor
-                # Propagate retrograde flag transitively through the beat
-                next_retro = via_retrograde or edge.is_retrograde
-                queue.append((edge.target, t_activate + effective_delay, next_retro))
+                # Carry the most severe conduction class seen along this path so
+                # a hemiblock re-route never gets "upgraded" to bundle morphology
+                # (and vice-versa a bundle path stays bundle through hemiblock edges).
+                next_route = (
+                    edge.route
+                    if _ROUTE_SEVERITY[edge.route] > _ROUTE_SEVERITY[path_route]
+                    else path_route
+                )
+                queue.append((edge.target, t_activate + effective_delay, next_route))
 
-        return activation_times, frozenset(retrograde_nodes)
+        retrograde_nodes = frozenset(
+            n for n, r in node_route.items() if r == ROUTE_BUNDLE
+        )
+        hemiblock_nodes = frozenset(
+            n for n, r in node_route.items() if r == ROUTE_HEMIBLOCK
+        )
+        return activation_times, retrograde_nodes, hemiblock_nodes
 
 
 # ---------------------------------------------------------------------------
@@ -225,17 +282,21 @@ def build_physiological_graph(params: SimulationParameters) -> ConductionGraph:
         # making it refractory before the retrograde signal arrives.
         # They become active only when the corresponding forward path is
         # blocked (bundle branch or fascicle block).
-        # is_retrograde=True → ECG engine uses broad Gaussians + discordant T.
+        #
+        # ROUTE_BUNDLE → ECG engine uses broad Gaussians + discordant T (LBBB/RBBB).
+        # ROUTE_HEMIBLOCK → mild broadening + concordant T; a severe fascicular
+        #   block therefore stays a hemiblock instead of converging to LBBB,
+        #   because the contralateral fascicle and His bundle remain intact.
         #
         # LBBB backup (RV → left ventricle, slow cell-to-cell spread):
-        ConductionEdge("RV",         "LV_ANT",      0.080, 1.0, is_retrograde=True),
-        ConductionEdge("RV",         "LV_INF",      0.085, 1.0, is_retrograde=True),
+        ConductionEdge("RV",         "LV_ANT",      0.080, 1.0, route=ROUTE_BUNDLE),
+        ConductionEdge("RV",         "LV_INF",      0.085, 1.0, route=ROUTE_BUNDLE),
         # RBBB backup (LV_ANT → RV):
-        ConductionEdge("LV_ANT",     "RV",          0.080, 1.0, is_retrograde=True),
+        ConductionEdge("LV_ANT",     "RV",          RBBB_RETRO_DELAY_S, 1.0, route=ROUTE_BUNDLE),
         # Left anterior hemiblock backup (LV_INF → LV_ANT):
-        ConductionEdge("LV_INF",     "LV_ANT",      0.040, 1.0, is_retrograde=True),
+        ConductionEdge("LV_INF",     "LV_ANT",      0.040, 1.0, route=ROUTE_HEMIBLOCK),
         # Left posterior hemiblock backup (LV_ANT → LV_INF):
-        ConductionEdge("LV_ANT",     "LV_INF",      0.040, 1.0, is_retrograde=True),
+        ConductionEdge("LV_ANT",     "LV_INF",      0.040, 1.0, route=ROUTE_HEMIBLOCK),
     ]
 
     return ConductionGraph(nodes, edges)

@@ -229,11 +229,24 @@ class MainWindow(QMainWindow):
             axis_class = state.cardiac_axis_classification
             axis_deg = state.cardiac_axis_degrees
             t = state.time
-            sa_text = f"{sa_hr:.0f} bpm" if sa_hr > 0 else "—"
+            
+            # Format intervals (display "—" if not measurable)
+            pr_text = f"{state.pr_interval_ms:.0f} ms" if state.pr_interval_ms is not None else "—"
+            qrs_text = f"{state.qrs_duration_ms:.0f} ms" if state.qrs_duration_ms is not None else "—"
+            qt_text = f"{state.qt_interval_ms:.0f} ms" if state.qt_interval_ms is not None else "—"
+            
+            # Atrial rate: show the fibrillation label in AF (no organised
+            # atrial rate) rather than a number that mirrors the ventricular rate.
+            if getattr(state, "atrial_rhythm", "Sinus") == "Fibrillation":
+                sa_text = "AF"
+            elif sa_hr > 0:
+                sa_text = f"{sa_hr:.0f} bpm"
+            else:
+                sa_text = "—"
             vent_text = f"{vent_hr:.0f} bpm" if vent_hr > 0 else "—"
             self._status_label.setText(
-                f"  SA: {sa_text}  |  QRS: {vent_text}  |  "
-                f"Axis: {axis_deg:.0f}° ({axis_class})  |  t = {t:.1f} s"
+                f"  Atrial: {sa_text}  |  QRS: {vent_text}  |  Axis: {axis_deg:.0f}° ({axis_class})  |  "
+                f"PR: {pr_text}  QRS: {qrs_text}  QT: {qt_text}  |  t = {t:.1f} s"
             )
         else:
             self._status_label.setText("  Stopped.")

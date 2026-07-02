@@ -51,7 +51,14 @@ class SimulationState:
     """Current simulation time [s]."""
 
     heart_rate: float = 60.0
-    """SA node / atrial rate [bpm]."""
+    """SA node / atrial rate [bpm]. 0.0 when there is no organised atrial
+    rhythm (e.g. atrial fibrillation) — see :attr:`atrial_rhythm`."""
+
+    atrial_rhythm: str = "Sinus"
+    """Atrial rhythm label, independent of the ventricular rate.
+    'Sinus' for organised P waves, 'Fibrillation' for AF (no discrete atrial
+    rate). Lets the UI distinguish "no atrial rate" from a real 0 bpm and
+    avoids the atrial readout collapsing onto the ventricular rate."""
 
     ventricular_rate: float = 60.0
     """Actual ventricular rate based on QRS complexes [bpm]."""
@@ -61,6 +68,15 @@ class SimulationState:
 
     cardiac_axis_classification: str = "Undetermined"
     """Lagetyp classification (e.g., 'Indifferenztyp', 'Linkstyp', etc.)."""
+
+    pr_interval_ms: float | None = None
+    """PR interval in milliseconds. None if not measurable."""
+
+    qrs_duration_ms: float | None = None
+    """QRS duration in milliseconds. None if not measurable."""
+
+    qt_interval_ms: float | None = None
+    """QT interval in milliseconds. None if not measurable."""
 
     is_running: bool = False
 

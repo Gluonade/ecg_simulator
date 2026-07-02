@@ -62,6 +62,7 @@ from cardiac_sim.core.conduction.graph import (
 )
 from cardiac_sim.core.ecg.lead_field import LeadFieldForwardModel, LEAD_NAMES
 from cardiac_sim.core.ecg.axis_analyzer import CardiacAxisAnalyzer
+from cardiac_sim.core.ecg.interval_analyzer import ECGIntervalAnalyzer
 from cardiac_sim.core.interfaces import (
     AbstractPathologyPlugin,
     AbstractStatefulPathologyPlugin,
@@ -172,6 +173,14 @@ class ConductionCableEngine(SimulationEngine):
         self._axis_analysis_counter: int = 0
         self._axis_analysis_interval: int = 50  # Analyze every ~100 ms at 500 Hz
 
+        # ECG interval analyzer (PR, QRS, QT measurements)
+        # ─────────────────────────────────────────────────────────
+        self._interval_analyzer = ECGIntervalAnalyzer(
+            sample_rate_hz=500.0  # Will be updated in initialize()
+        )
+        self._interval_analysis_counter: int = 0
+        self._interval_analysis_interval: int = 50  # Analyze every ~100 ms at 500 Hz
+
         # Beat accumulator: collects cable outputs over the current beat
         self._current_beat_nodes: dict[str, float] = {}
         self._beat_in_progress: bool = False
@@ -212,6 +221,10 @@ class ConductionCableEngine(SimulationEngine):
             # Reset cardiac axis analyzer
             self._axis_analyzer.reset()
             self._axis_analysis_counter = 0
+            
+            # Reset ECG interval analyzer
+            self._interval_analyzer.reset()
+            self._interval_analysis_counter = 0
 
         logger.info("ConductionCableEngine initialised.")
 
@@ -280,6 +293,10 @@ class ConductionCableEngine(SimulationEngine):
                 float(ecg[0]),      # Lead I
                 float(ecg[5]),      # Lead aVF
             )
+            
+            # Feed the full 12-lead frame to the interval analyzer: QRS onset/
+            # offset are delineated globally across leads; P/T use lead II.
+            self._interval_analyzer.add_ecg_sample(self._time, ecg)
             
             # Detect QRS peaks in the trace
             self._detect_qrs_peaks()
@@ -361,19 +378,37 @@ class ConductionCableEngine(SimulationEngine):
 
     def get_state(self) -> SimulationState:
         with self._lock:
-            hr = 60.0 / self._last_rr if self._last_rr > 0.0 else 0.0
+            # In atrial fibrillation there is no organised atrial rhythm, so the
+            # atrial ("SA") rate is not a single number — report it as 0.0 with a
+            # 'Fibrillation' label rather than letting it mirror the QRS rate.
+            af = self._params.atrial_fib.enabled
+            if af:
+                hr = 0.0
+                atrial_rhythm = "Fibrillation"
+            else:
+                hr = 60.0 / self._last_rr if self._last_rr > 0.0 else 0.0
+                atrial_rhythm = "Sinus"
+
             # Use detected QRS rate (from actual ECG peaks) rather than mechanism-based rate
             vr = 60.0 / self._detected_qrs_rr if self._detected_qrs_rr > 0.0 else 0.0
-            
+
             # Perform cardiac axis analysis
             axis_result = self._axis_analyzer.analyze()
-            
+
+            # Perform ECG interval measurement. Suppress PR when no organised
+            # P wave precedes the QRS (AF), so it can't latch onto an f-wave.
+            interval_result = self._interval_analyzer.analyze(p_wave_expected=not af)
+
             return SimulationState(
                 time=self._time,
                 heart_rate=hr,
+                atrial_rhythm=atrial_rhythm,
                 ventricular_rate=vr,
                 cardiac_axis_degrees=axis_result.angle_degrees,
                 cardiac_axis_classification=axis_result.classification,
+                pr_interval_ms=interval_result.pr_interval_ms,
+                qrs_duration_ms=interval_result.qrs_duration_ms,
+                qt_interval_ms=interval_result.qt_interval_ms,
                 is_running=True,
             )
 

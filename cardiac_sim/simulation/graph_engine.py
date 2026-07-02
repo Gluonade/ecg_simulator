@@ -45,6 +45,7 @@ import numpy as np
 
 from cardiac_sim.core.conduction.graph import ConductionGraph, build_physiological_graph
 from cardiac_sim.core.ecg.axis_analyzer import CardiacAxisAnalyzer
+from cardiac_sim.core.ecg.interval_analyzer import ECGIntervalAnalyzer
 from cardiac_sim.core.ecg.lead_field import LeadFieldForwardModel, LEAD_NAMES
 from cardiac_sim.core.interfaces import (
     AbstractPathologyPlugin,
@@ -63,6 +64,25 @@ _INF = float("inf")
 # Beats older than this are excluded from ECG computation.
 # Covers the longest T-wave tail (~700 ms at slow HR).
 _BEAT_RETENTION_S = 0.85
+
+# Depolarisation/repolarisation Gaussian-width multiplier for nodes activated
+# via a hemiblock (fascicular) re-route.  Much smaller than the retrograde
+# bundle-branch factor (2.5) so a hemiblock stays a mildly widened, left/right
+# axis-deviated complex with a *concordant* T wave — never a full LBBB/RBBB.
+_HEMIBLOCK_WIDTH_FACTOR = 1.4
+
+# Gaussian-width multipliers for slow (non-fascicular) conduction.
+_RETRO_WIDTH_FACTOR = 2.5     # bundle-branch retrograde spread (LBBB body, etc.)
+_ECTOPIC_WIDTH_FACTOR = 3.0   # ectopic / ventricular-escape cell-to-cell spread
+
+# RBBB terminal right-ventricular force (rSR' in V1, slurred S in I/V6).
+# Rendered as a distinct, sharper, larger deflection than the generic
+# retrograde body so that it (a) is a visible terminal R'/S and (b) extends
+# the measured QRS beyond 120 ms. A broad low-amplitude RV force is invisible
+# to both the eye and the QRS-duration delineator (it has neither slope nor
+# amplitude), which is why an isolated RBBB previously measured as narrow.
+_RBBB_RV_WIDTH_FACTOR = 1.6
+_RBBB_RV_AMP_FACTOR = 3.5
 
 # Fixed activation spread for ectopic ventricular beats [seconds].
 # Mimics slow cell-to-cell spread without the Purkinje fast pathway.
@@ -85,9 +105,16 @@ class BeatRecord:
     activation_times: dict[str, float] = field(default_factory=dict)
     retrograde_nodes: frozenset[str] = field(default_factory=frozenset)
     """
-    Nodes activated via working-myocardium retrograde edges (LBBB, RBBB,
-    hemiblocks) or nodes transitively downstream of such a node.
+    Nodes activated via contralateral bundle-branch retrograde edges (LBBB,
+    RBBB) or nodes transitively downstream of such a node.
     These receive broadened Gaussians and discordant T waves in ECG computation.
+    """
+    hemiblock_nodes: frozenset[str] = field(default_factory=frozenset)
+    """
+    Nodes activated via intra-LV fascicular re-routing (LAHB, LPHB) or nodes
+    transitively downstream of such a node (but not also bundle-retrograde).
+    These receive only mild broadening and keep a concordant T wave, so a severe
+    fascicular block stays a bounded hemiblock instead of converging to LBBB.
     """
 
 
@@ -169,6 +196,14 @@ class ConductionGraphEngine(SimulationEngine):
         self._axis_analysis_counter: int = 0
         self._axis_analysis_interval: int = 50  # Analyze every ~100 ms at 500 Hz
 
+        # ECG interval analyzer (PR, QRS, QT measurements)
+        # ─────────────────────────────────────────────────────────
+        self._interval_analyzer = ECGIntervalAnalyzer(
+            sample_rate_hz=500.0  # Will be updated in initialize()
+        )
+        self._interval_analysis_counter: int = 0
+        self._interval_analysis_interval: int = 50  # Analyze every ~100 ms at 500 Hz
+
     # ------------------------------------------------------------------
     # SimulationEngine interface
     # ------------------------------------------------------------------
@@ -203,6 +238,10 @@ class ConductionGraphEngine(SimulationEngine):
             # Reset cardiac axis analyzer
             self._axis_analyzer.reset()
             self._axis_analysis_counter = 0
+            
+            # Reset ECG interval analyzer
+            self._interval_analyzer.reset()
+            self._interval_analysis_counter = 0
             
         logger.info("ConductionGraphEngine initialised.")
 
@@ -256,6 +295,10 @@ class ConductionGraphEngine(SimulationEngine):
                 float(ecg[0]),      # Lead I
                 float(ecg[5]),      # Lead aVF
             )
+            
+            # Feed the full 12-lead frame to the interval analyzer: QRS onset/
+            # offset are delineated globally across leads; P/T use lead II.
+            self._interval_analyzer.add_ecg_sample(self._time, ecg)
             
             # Detect QRS peaks in the trace
             self._detect_qrs_peaks()
@@ -337,19 +380,37 @@ class ConductionGraphEngine(SimulationEngine):
 
     def get_state(self) -> SimulationState:
         with self._lock:
-            hr = 60.0 / self._last_rr if self._last_rr > 0.0 else 0.0
+            # In atrial fibrillation there is no organised atrial rhythm, so the
+            # atrial ("SA") rate is not a single number — report it as 0.0 with a
+            # 'Fibrillation' label rather than letting it mirror the QRS rate.
+            af = self._params.atrial_fib.enabled
+            if af:
+                hr = 0.0
+                atrial_rhythm = "Fibrillation"
+            else:
+                hr = 60.0 / self._last_rr if self._last_rr > 0.0 else 0.0
+                atrial_rhythm = "Sinus"
+
             # Use detected QRS rate (from actual ECG peaks) rather than mechanism-based rate
             vr = 60.0 / self._detected_qrs_rr if self._detected_qrs_rr > 0.0 else 0.0
-            
+
             # Perform cardiac axis analysis (called every get_state(), which emits ~10x/sec)
             axis_result = self._axis_analyzer.analyze()
-            
+
+            # Perform ECG interval measurement. Suppress PR when no organised
+            # P wave precedes the QRS (AF), so it can't latch onto an f-wave.
+            interval_result = self._interval_analyzer.analyze(p_wave_expected=not af)
+
             return SimulationState(
                 time=self._time,
                 heart_rate=hr,
+                atrial_rhythm=atrial_rhythm,
                 ventricular_rate=vr,
                 cardiac_axis_degrees=axis_result.angle_degrees,
                 cardiac_axis_classification=axis_result.classification,
+                pr_interval_ms=interval_result.pr_interval_ms,
+                qrs_duration_ms=interval_result.qrs_duration_ms,
+                qt_interval_ms=interval_result.qt_interval_ms,
                 is_running=True,
             )
 
@@ -468,7 +529,7 @@ class ConductionGraphEngine(SimulationEngine):
             beat_graph = build_physiological_graph(p)
 
         # ── Propagate activation through the graph ─────────────────────
-        act_times, retro = beat_graph.compute_beat_activations(
+        act_times, retro, hemi = beat_graph.compute_beat_activations(
             t_fire, self._last_activation
         )
 
@@ -477,6 +538,7 @@ class ConductionGraphEngine(SimulationEngine):
             sa_fire_time=t_fire,
             activation_times=act_times,
             retrograde_nodes=retro,
+            hemiblock_nodes=hemi,
         )
         self._active_beats.append(record)
         self._last_activation.update(act_times)
@@ -605,7 +667,7 @@ class ConductionGraphEngine(SimulationEngine):
         origin = self._params.escape_pacemaker.origin
         if origin == "HIS":
             # Junctional escape (supra-Hisian block): narrow QRS
-            act_times, retro = self._graph.compute_beat_activations(
+            act_times, retro, hemi = self._graph.compute_beat_activations(
                 t_fire, self._last_activation, start_node="HIS"
             )
             record = BeatRecord(
@@ -613,6 +675,7 @@ class ConductionGraphEngine(SimulationEngine):
                 sa_fire_time=t_fire,
                 activation_times=act_times,
                 retrograde_nodes=retro,
+                hemiblock_nodes=hemi,
             )
         else:
             # Ventricular escape (infra-Hisian block): wide, bizarre QRS
@@ -659,7 +722,7 @@ class ConductionGraphEngine(SimulationEngine):
         any active bundle-branch block plugin.
         """
         assert self._graph is not None
-        act_times, retro = self._graph.compute_beat_activations(
+        act_times, retro, hemi = self._graph.compute_beat_activations(
             t_fire, self._last_activation, start_node="HIS"
         )
         record = BeatRecord(
@@ -667,6 +730,7 @@ class ConductionGraphEngine(SimulationEngine):
             sa_fire_time=t_fire,
             activation_times=act_times,
             retrograde_nodes=retro,
+            hemiblock_nodes=hemi,
         )
         self._active_beats.append(record)
         self._last_activation.update(act_times)
@@ -687,8 +751,11 @@ class ConductionGraphEngine(SimulationEngine):
         mean_rr = af.mean_rr_ms / 1000.0
         interval = float(self._af_rng.exponential(mean_rr))
         interval = max(0.300, interval)   # physiological minimum: AV refractory
-        if self._af_last_qrs > _NEG_INF:
-            self._last_rr = t_fire - self._af_last_qrs
+        # NOTE: do NOT write the ventricular interval into self._last_rr here.
+        # _last_rr is the atrial/SA rate; in AF there is no organised atrial
+        # rhythm, and reusing it for the ventricular interval was what made the
+        # "SA" readout collapse onto the QRS rate. Ventricular rate comes from
+        # the QRS-peak detector (_detected_qrs_rr) instead.
         self._af_last_qrs = t_fire
         self._af_next_qrs = t_fire + interval
         logger.debug("AF QRS at t=%.3f s, next in %.0f ms", t_fire, interval * 1000)
@@ -703,9 +770,9 @@ class ConductionGraphEngine(SimulationEngine):
 
         Morphological modulation
         -------------------------
-        Nodes flagged as **retrograde** in a beat record (LBBB, RBBB,
-        hemiblocks) and all nodes in **ectopic** beats (VES, ventricular
-        escape) receive modified waveform parameters:
+        Nodes flagged as **retrograde** in a beat record (LBBB, RBBB) and all
+        nodes in **ectopic** beats (VES, ventricular escape) receive modified
+        waveform parameters:
 
         * ``depol_width_factor = 2.5`` (retrograde) / ``3.0`` (ectopic) —
           broad, slurred QRS components from slow cell-to-cell spread.
@@ -713,6 +780,13 @@ class ConductionGraphEngine(SimulationEngine):
           each lead), mandatory for all these conditions per ECG literature.
         * ``amplitude_factor = 1.5`` for retrograde RV (RBBB only) — boosts
           the terminal R' in V1 to physiologically realistic amplitude.
+
+        Nodes flagged as **hemiblock** (LAHB, LPHB fascicular re-routing) get a
+        much gentler treatment — ``depol_width_factor = _HEMIBLOCK_WIDTH_FACTOR``
+        (mild broadening) with a **concordant** T wave (``repol_sign = +1.0``).
+        This keeps a hemiblock bounded (axis deviation, QRS < 120 ms) even when
+        the fascicular conductance is driven to zero, since the contralateral
+        fascicle and His bundle still activate the ventricle.
 
         Known Phase 2 limitations (deferred to Phase 3 with cell models)
         -----------------------------------------------------------------
@@ -742,14 +816,30 @@ class ConductionGraphEngine(SimulationEngine):
                     continue
 
                 is_retro = node_name in beat.retrograde_nodes
+                is_hemi = node_name in beat.hemiblock_nodes
                 if beat.is_ectopic or is_retro:
-                    width = 3.0 if beat.is_ectopic else 2.5
-                    amp = 1.5 if (is_retro and node_name == "RV") else 1.0
+                    if is_retro and node_name == "RV":
+                        # RBBB terminal R': sharper + larger so it forms a real
+                        # terminal deflection and widens the QRS past 120 ms.
+                        width = _RBBB_RV_WIDTH_FACTOR
+                        amp = _RBBB_RV_AMP_FACTOR
+                    else:
+                        width = _ECTOPIC_WIDTH_FACTOR if beat.is_ectopic else _RETRO_WIDTH_FACTOR
+                        amp = 1.0
                     total_dipole += node.dipole_contribution(
                         t, t_act,
                         depol_width_factor=width,
                         repol_sign=-1.0,
                         amplitude_factor=amp,
+                    )
+                elif is_hemi:
+                    # Fascicular re-route (LAHB/LPHB): mildly delayed and
+                    # broadened, but with a CONCORDANT T wave.  Bounded — never
+                    # a full bundle-branch morphology, however severe the block.
+                    total_dipole += node.dipole_contribution(
+                        t, t_act,
+                        depol_width_factor=_HEMIBLOCK_WIDTH_FACTOR,
+                        repol_sign=1.0,
                     )
                 else:
                     total_dipole += node.dipole_contribution(t, t_act)

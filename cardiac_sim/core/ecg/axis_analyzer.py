@@ -207,9 +207,15 @@ class CardiacAxisAnalyzer:
         -------
         AxisAnalysisResult
             Contains angle, classification, confidence, and diagnostic info.
+            When no complexes are detected between beats, returns the last
+            valid result to avoid display flickering. If never detected any
+            complexes, returns an invalid result.
         """
         if not self._ecg_buffer_i or not self._ecg_buffer_avf:
             # Not enough data yet
+            # Return last valid result if available, otherwise invalid
+            if self._last_result and self._last_result.is_valid:
+                return self._last_result
             return AxisAnalysisResult(
                 angle_degrees=0.0,
                 classification="Undetermined",
@@ -223,8 +229,10 @@ class CardiacAxisAnalyzer:
         # Detect QRS peaks in both leads
         self._detect_qrs_peaks()
 
-        # If no complexes found, return invalid result
+        # If no complexes found, return last valid result to avoid flickering
         if not self._detected_qrs_times or not self._qrs_amplitudes_i:
+            if self._last_result and self._last_result.is_valid:
+                return self._last_result
             return AxisAnalysisResult(
                 angle_degrees=0.0,
                 classification="Undetermined",
